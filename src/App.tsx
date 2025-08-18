@@ -5,6 +5,9 @@ import { useTimeline } from "./hooks/useTimeline";
 import type { Calculator } from "./types/desmos";
 import "./App.css";
 
+// デバッグモードのフラグ（開発時に true にする）
+const DEBUG_MODE = false;
+
 function App() {
   const [calculator, setCalculator] = useState<Calculator | null>(null);
   const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline">("state");
@@ -24,6 +27,7 @@ function App() {
     updateInitialState,
     clearCache,
     getDebugInfo,
+    getDebugAtTime,
   } = useTimeline(calculator);
 
   const handleCalculatorReady = useCallback(
@@ -100,17 +104,41 @@ function App() {
   const handleShowDebugInfo = useCallback(() => {
     const debugInfo = getDebugInfo();
     console.log("Debug Info:", debugInfo);
-    alert(
-      `Calculated Regions: ${debugInfo.cacheInfo.calculatedRegions}\n` +
-        `Event Cache Size: ${debugInfo.cacheInfo.eventCacheSize}\n` +
-        `Regions: ${debugInfo.cacheInfo.calculatedRegionDetails.join(", ")}\n` +
-        `Critical Times: ${debugInfo.criticalTimes.join(", ")}\n` +
-        `Max Calculated Time: ${debugInfo.maxCalculatedTime.toFixed(1)}s\n` +
-        `State Events: ${debugInfo.stateEventsCount}\n` +
+
+    // 詳細なデバッグ情報
+    console.log("Detailed Debug:", debugInfo.detailedDebug);
+
+    // 現在時刻周辺のデバッグ情報
+    const timeDebug = getDebugAtTime(currentTime);
+    console.log(`Debug at ${currentTime}s:`, timeDebug);
+
+    console.log(
+      `=== 基本情報 ===\n` +
         `Current Time: ${debugInfo.currentTime.toFixed(1)}s\n` +
-        `Last Applied: ${debugInfo.lastAppliedTime.toFixed(1)}s`
+        `Last Applied: ${debugInfo.lastAppliedTime.toFixed(1)}s\n` +
+        `Max Calculated: ${debugInfo.maxCalculatedTime.toFixed(1)}s\n\n` +
+        `=== 計算済み領域 ===\n` +
+        `Regions Count: ${debugInfo.detailedDebug.calculatedRegions.length}\n` +
+        debugInfo.detailedDebug.calculatedRegions
+          .map((r, i) => `${i + 1}. ${r.start}s-${r.end}s (start state: ${r.startStateTime}s)`)
+          .join("\n") +
+        "\n\n" +
+        `=== イベント ===\n` +
+        `Timeline Events: ${debugInfo.detailedDebug.timelineEvents.length}\n` +
+        debugInfo.detailedDebug.timelineEvents.map((e) => `${e.time}s: ${e.action}`).join("\n") +
+        "\n\n" +
+        `=== 現在時刻 (${currentTime}s) の状況 ===\n` +
+        `Found Region: ${
+          timeDebug.foundRegion
+            ? `${timeDebug.foundRegion.start}s-${timeDebug.foundRegion.end}s`
+            : "なし"
+        }\n` +
+        `Nearby Events: ${timeDebug.nearbyEvents
+          .map((e) => `${e.time}s(${e.action})`)
+          .join(", ")}\n` +
+        `Cached States: ${timeDebug.cachedStates.join(", ")}`
     );
-  }, [getDebugInfo]);
+  }, [getDebugInfo, getDebugAtTime, currentTime]);
 
   // 計算済み領域の情報を取得（新システム用）
   const calculatedRegions = getDebugInfo().calculatedRegions;
@@ -156,13 +184,48 @@ function App() {
             >
               キャッシュクリア
             </button>
-            <button
-              onClick={handleShowDebugInfo}
-              className="px-3 py-1.5 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
-              title="デバッグ情報表示"
-            >
-              Debug
-            </button>
+            {DEBUG_MODE && (
+              <>
+                <button
+                  onClick={handleShowDebugInfo}
+                  className="px-3 py-1.5 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
+                  title="デバッグ情報表示"
+                >
+                  Debug
+                </button>
+                <button
+                  onClick={() => {
+                    console.log("=== 2s問題デバッグ ===");
+                    [1.9, 2.0, 2.1].forEach((time) => {
+                      const debug = getDebugAtTime(time);
+                      console.log(`Time ${time}s:`, debug);
+                    });
+
+                    // 計算済み領域の詳細を確認
+                    const regions = getDebugInfo().detailedDebug.calculatedRegions;
+                    console.log("All regions:", regions);
+
+                    // 2s前後で状態を比較
+                    try {
+                      seekTo(1.9);
+                      setTimeout(() => {
+                        console.log("State at 1.9s:", calculator?.getExpressions());
+                        seekTo(2.1);
+                        setTimeout(() => {
+                          console.log("State at 2.1s:", calculator?.getExpressions());
+                        }, 100);
+                      }, 100);
+                    } catch (e) {
+                      console.error("Error during state comparison:", e);
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700"
+                  title="2sイベント問題をデバッグ"
+                >
+                  2s Debug
+                </button>
+              </>
+            )}
             <button className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700">
               エクスポート
             </button>

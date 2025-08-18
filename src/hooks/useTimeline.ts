@@ -371,8 +371,18 @@ export const useTimeline = (calculator: Calculator | null) => {
       calculatedRegions: stateManager.getCalculatedRegions(),
       stateEventsCount: project.stateEvents.length,
       project,
+      // 新しいデバッグ情報
+      detailedDebug: stateManager.getDebugInfo(),
     };
   }, [currentTime, stateManager, project]);
+
+  // 特定時刻でのデバッグ情報
+  const getDebugAtTime = useCallback(
+    (time: number) => {
+      return stateManager.getDebugAtTime(time);
+    },
+    [stateManager]
+  );
 
   // TimelineEventを編集
   const updateEvent = useCallback(
@@ -425,6 +435,7 @@ export const useTimeline = (calculator: Calculator | null) => {
     updateInitialState,
     clearCache,
     getDebugInfo,
+    getDebugAtTime,
     stateManager,
   };
 };

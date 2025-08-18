@@ -8,6 +8,16 @@ import type {
   ContinuousEvent,
 } from "../types/timeline";
 
+// デバッグモードのフラグ
+const DEBUG_MODE = false;
+
+// デバッグ用のログ関数
+const debugLog = (...args: unknown[]) => {
+  if (DEBUG_MODE) {
+    console.log(...args);
+  }
+};
+
 export class StateManager {
   private initialState: DesmosState;
   private timeline: TimelineEvent[];
@@ -56,7 +66,7 @@ export class StateManager {
 
       // この領域内のイベントを取得（StateEvent時刻のイベントも含める）
       const eventsInRegion = this.timeline.filter(
-        (event) => event.time > regionStart && event.time < regionEnd
+        (event) => event.time >= regionStart && event.time < regionEnd
       );
 
       if (eventsInRegion.length === 0) {
@@ -67,17 +77,54 @@ export class StateManager {
           startState: this.createSnapshotFromDesmosState(insertedState.state, regionStart),
         });
       } else {
-        // イベントがある場合、最初のイベントまでは計算済み
-        const firstEvent = eventsInRegion[0];
-        this.calculatedRegions.push({
-          start: regionStart,
-          end: firstEvent.time,
-          startState: this.createSnapshotFromDesmosState(insertedState.state, regionStart),
-        });
+        // イベントがある場合の処理を改善
+        let currentTime = regionStart;
+        let currentState = this.createSnapshotFromDesmosState(insertedState.state, regionStart);
+
+        for (const event of eventsInRegion) {
+          // イベント前までの領域を作成（初期状態からイベントまで）
+          if (event.time > currentTime) {
+            this.calculatedRegions.push({
+              start: currentTime,
+              end: event.time,
+              startState: { ...currentState },
+            });
+          }
+
+          // イベントを適用した新しい状態を作成
+          if (event.time === currentTime) {
+            // 開始時刻にイベントがある場合（時刻0のイベントなど）
+            currentState = this.createSnapshotWithEvent(currentState, event);
+          } else {
+            // 通常のイベント処理
+            currentState = this.createSnapshotWithEvent(currentState, event);
+          }
+
+          // イベント直後の状態をキャッシュ
+          this.eventStateCache.set(event.time, { ...currentState });
+
+          currentTime = event.time;
+        }
+
+        // 最後のイベント後から領域終了まで
+        if (currentTime < regionEnd) {
+          this.calculatedRegions.push({
+            start: currentTime,
+            end: regionEnd,
+            startState: { ...currentState },
+          });
+        }
       }
     }
 
-    console.log("Initialized calculated regions:", this.calculatedRegions);
+    debugLog(
+      "Initialized calculated regions:",
+      this.calculatedRegions.map((r) => ({
+        start: r.start,
+        end: r.end,
+        startStateTime: r.startState.time,
+      }))
+    );
   }
 
   // 指定時刻が計算済み領域内かチェック
@@ -150,7 +197,7 @@ export class StateManager {
 
   // 指定時刻から計算を進める（イベント実行により計算済み領域を拡張）
   calculateFromTime(fromTime: number, toTime: number): void {
-    console.log(`Calculating from ${fromTime}s to ${toTime}s`);
+    debugLog(`Calculating from ${fromTime}s to ${toTime}s`);
 
     // fromTimeが計算済み領域内でない場合、最新の計算済み時刻から開始
     let actualFromTime = fromTime;
@@ -158,7 +205,7 @@ export class StateManager {
       const maxCalculatedTime = this.getMaxCalculatedTime();
       if (maxCalculatedTime >= 0) {
         actualFromTime = maxCalculatedTime;
-        console.log(`Adjusted start time from ${fromTime}s to ${actualFromTime}s (max calculated)`);
+        debugLog(`Adjusted start time from ${fromTime}s to ${actualFromTime}s (max calculated)`);
       } else {
         throw new Error(`Cannot calculate from ${fromTime}s - no calculated regions available`);
       }
@@ -169,7 +216,7 @@ export class StateManager {
       (event) => event.time > actualFromTime && event.time <= toTime
     );
 
-    console.log(
+    debugLog(
       `Processing ${eventsToProcess.length} events between ${actualFromTime}s and ${toTime}s`
     );
 
@@ -179,20 +226,33 @@ export class StateManager {
         (r) => actualFromTime >= r.start && actualFromTime <= r.end // <= に変更して境界を含める
       );
       if (region) {
-        console.log(`Extending region from ${region.end}s to ${toTime}s`);
-        region.end = Math.max(region.end, toTime);
-        console.log(`Region extended to: ${region.start}s-${region.end}s`);
+        // イベント境界を超えて拡張しないように制限
+        const nextEventTime = this.timeline.find((event) => event.time > actualFromTime)?.time;
+        const maxExtendTime = nextEventTime ? Math.min(nextEventTime, toTime) : toTime;
+
+        debugLog(
+          `Extending region from ${region.end}s to ${maxExtendTime}s (limited by next event at ${nextEventTime}s)`
+        );
+        region.end = Math.max(region.end, maxExtendTime);
+        debugLog(`Region extended to: ${region.start}s-${region.end}s`);
       } else {
         // 既存の領域が見つからない場合、新しい領域を作成
         // actualFromTimeの状態を取得して新しい領域の開始状態とする
         try {
           const startState = this.getStateAtTime(actualFromTime);
+
+          // 次のイベントまでの制限を適用
+          const nextEventTime = this.timeline.find((event) => event.time > actualFromTime)?.time;
+          const maxEndTime = nextEventTime ? Math.min(nextEventTime, toTime) : toTime;
+
           this.calculatedRegions.push({
             start: actualFromTime,
-            end: toTime,
+            end: maxEndTime,
             startState: startState,
           });
-          console.log(`Created new region: ${actualFromTime}s-${toTime}s`);
+          debugLog(
+            `Created new region: ${actualFromTime}s-${maxEndTime}s (limited by next event at ${nextEventTime}s)`
+          );
         } catch (error) {
           console.warn(`Failed to create new region from ${actualFromTime}s:`, error);
         }
@@ -204,7 +264,7 @@ export class StateManager {
     let currentState = this.getStateAtTime(actualFromTime);
 
     for (const event of eventsToProcess) {
-      console.log(`Processing event at ${event.time}s: ${event.action}`);
+      debugLog(`Processing event at ${event.time}s: ${event.action}`);
 
       // 前の状態をベースにイベントを適用（deep copy）
       const postEventState: StateSnapshot = {
@@ -232,11 +292,11 @@ export class StateManager {
           end: regionEnd,
           startState: { ...postEventState },
         });
-        console.log(`Created new calculated region: ${event.time}s to ${regionEnd}s`);
+        debugLog(`Created new calculated region: ${event.time}s to ${regionEnd}s`);
       } else {
         // 既存の領域を拡張
         existingRegion.end = Math.max(existingRegion.end, regionEnd);
-        console.log(`Extended existing region to: ${existingRegion.end}s`);
+        debugLog(`Extended existing region to: ${existingRegion.end}s`);
       }
 
       // 次のイベントのために現在の状態を更新
@@ -246,7 +306,7 @@ export class StateManager {
     // 領域をマージ・最適化
     this.optimizeCalculatedRegions();
 
-    console.log(`Calculation completed. Total regions:`, this.calculatedRegions.length);
+    debugLog(`Calculation completed. Total regions:`, this.calculatedRegions.length);
   }
 
   // 計算済み領域を最適化（重複や隣接する領域をマージ）
@@ -256,7 +316,11 @@ export class StateManager {
     // 時刻順にソート
     this.calculatedRegions.sort((a, b) => a.start - b.start);
 
-    // 重複や隣接する領域をマージ
+    // イベント時刻のセットを作成（境界として保護すべき時刻）
+    const eventTimes = new Set(this.timeline.map((event) => event.time));
+    eventTimes.add(0); // 初期時刻も保護
+
+    // 重複や隣接する領域をマージ（ただしイベント境界は跨がない）
     const optimized: Array<{ start: number; end: number; startState: StateSnapshot }> = [];
 
     for (const region of this.calculatedRegions) {
@@ -267,18 +331,30 @@ export class StateManager {
 
       const lastRegion = optimized[optimized.length - 1];
 
-      // 重複または隣接している場合（小さな隙間も許容）
-      if (region.start <= lastRegion.end + 0.001) {
+      // イベント境界を跨がないかチェック
+      const hasEventBetween = Array.from(eventTimes).some(
+        (eventTime) => eventTime > lastRegion.end && eventTime < region.start
+      );
+
+      // 重複または隣接している場合（小さな隙間も許容）かつイベント境界を跨がない
+      if (region.start <= lastRegion.end + 0.001 && !hasEventBetween) {
         // マージ：より大きな終了時刻を採用
         lastRegion.end = Math.max(lastRegion.end, region.end);
-        console.log(`Merged regions: ${lastRegion.start}-${lastRegion.end}`);
+        debugLog(
+          `Merged regions: ${lastRegion.start}-${lastRegion.end} (no event boundary crossed)`
+        );
       } else {
         optimized.push({ ...region });
+        if (hasEventBetween) {
+          debugLog(
+            `Kept separate regions due to event boundary: ${lastRegion.start}-${lastRegion.end} and ${region.start}-${region.end}`
+          );
+        }
       }
     }
 
     this.calculatedRegions = optimized;
-    console.log(`Optimized to ${this.calculatedRegions.length} regions`);
+    debugLog(`Optimized to ${this.calculatedRegions.length} regions`);
   }
 
   // StateEventを追加
@@ -386,25 +462,25 @@ export class StateManager {
     console.warn("createCheckpoint is deprecated in the new system");
     // 代わりに計算を実行
     if (this.isTimeCalculated(time)) {
-      console.log(`Time ${time}s is already calculated`);
+      debugLog(`Time ${time}s is already calculated`);
     } else {
-      console.log(`Time ${time}s is not calculated yet`);
+      debugLog(`Time ${time}s is not calculated yet`);
     }
   }
 
   // timeの状態を計算してcalculatorに適用
   applyStateAtTime(time: number, calculator: Calculator): void {
-    console.log(`StateManager: Applying state at time ${time}`);
+    debugLog(`StateManager: Applying state at time ${time}`);
 
     try {
       const state = this.getStateAtTime(time);
       this.applyStateToCalculator(state, calculator);
 
-      console.log(`StateManager: Applied state with ${state.expressions.length} expressions`);
+      debugLog(`StateManager: Applied state with ${state.expressions.length} expressions`);
 
       // デバッグ用：適用された式の内容をログ出力
       state.expressions.forEach((expr: DesmosExpression) => {
-        console.log(`  Expression ${expr.id}: ${expr.latex} (hidden: ${expr.hidden})`);
+        debugLog(`  Expression ${expr.id}: ${expr.latex} (hidden: ${expr.hidden})`);
       });
     } catch (error) {
       console.error(`Failed to apply state at ${time}s:`, error);
@@ -415,7 +491,7 @@ export class StateManager {
   clearCache(): void {
     this.eventStateCache.clear();
     this.initializeCalculatedRegions();
-    console.log("Calculated regions reset to initial state");
+    debugLog("Calculated regions reset to initial state");
   }
 
   // timelineを更新
@@ -809,5 +885,68 @@ export class StateManager {
         }
       }
     }
+  }
+
+  // イベントを適用した新しいスナップショットを作成
+  private createSnapshotWithEvent(snapshot: StateSnapshot, event: TimelineEvent): StateSnapshot {
+    const newSnapshot: StateSnapshot = {
+      time: snapshot.time,
+      expressions: [...snapshot.expressions],
+      mathBounds: { ...snapshot.mathBounds },
+      settings: { ...snapshot.settings },
+      variables: { ...snapshot.variables },
+    };
+
+    // イベントを新しいスナップショットに適用
+    this.applyEventToSnapshot(newSnapshot, event);
+
+    return newSnapshot;
+  }
+
+  // デバッグ情報のゲッター
+  getDebugInfo() {
+    return {
+      calculatedRegions: this.calculatedRegions.map((r) => ({
+        start: r.start,
+        end: r.end,
+        startStateTime: r.startState.time,
+        startStateExpressions: r.startState.expressions.length,
+      })),
+      eventCache: Array.from(this.eventStateCache.keys()).sort((a, b) => a - b),
+      timelineEvents: this.timeline.map((e) => ({
+        time: e.time,
+        action: e.action,
+        id: e.id,
+      })),
+      stateEvents: this.stateEvents.map((e) => ({
+        time: e.time,
+        id: e.id,
+      })),
+    };
+  }
+
+  // 特定の時刻での詳細デバッグ情報
+  getDebugAtTime(time: number) {
+    const region = this.calculatedRegions.find((r) => time >= r.start && time < r.end);
+    const nearbyEvents = this.timeline.filter((e) => Math.abs(e.time - time) < 1);
+
+    return {
+      requestedTime: time,
+      foundRegion: region
+        ? {
+            start: region.start,
+            end: region.end,
+            startStateTime: region.startState.time,
+          }
+        : null,
+      nearbyEvents: nearbyEvents.map((e) => ({
+        time: e.time,
+        action: e.action,
+        distance: Math.abs(e.time - time),
+      })),
+      cachedStates: Array.from(this.eventStateCache.keys())
+        .filter((t) => Math.abs(t - time) < 1)
+        .sort((a, b) => a - b),
+    };
   }
 }
