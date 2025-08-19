@@ -21,6 +21,7 @@ interface TimelineControlsProps {
   onInsertEvent?: (time: number, event: Omit<TimelineEvent, "id" | "time">) => void;
   onInsertState?: (time: number) => void;
   onEventSelect?: (event: TimelineEvent) => void;
+  onEventTimeChange?: (eventId: string, newTime: number) => void; // ドラッグ時の時間変更
   selectedEventId?: string;
 }
 
@@ -37,12 +38,69 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   onInsertEvent,
   onInsertState,
   onEventSelect,
+  onEventTimeChange,
   selectedEventId,
 }) => {
   const [showInsertMenu, setShowInsertMenu] = useState(false);
   const [insertTime] = useState(0);
+  const [dragState, setDragState] = useState<{
+    eventId: string;
+    startX: number;
+    startTime: number;
+    isDragging: boolean;
+  } | null>(null);
 
-  // イベントの継続時間を取得（デフォルトは0.1秒）
+  // ドラッグハンドラー
+  const handleMouseDown = React.useCallback((event: TimelineEvent, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!event.id) return;
+
+    setDragState({
+      eventId: event.id,
+      startX: e.clientX,
+      startTime: event.time,
+      isDragging: false,
+    });
+  }, []);
+
+  const handleMouseMove = React.useCallback(
+    (e: MouseEvent) => {
+      if (!dragState) return;
+
+      const deltaX = e.clientX - dragState.startX;
+      const timelineElement = document.querySelector(".timeline-container");
+      if (!timelineElement) return;
+
+      const timelineWidth = timelineElement.getBoundingClientRect().width;
+      const deltaTime = (deltaX / timelineWidth) * duration;
+      const newTime = Math.max(0, Math.min(duration, dragState.startTime + deltaTime));
+
+      if (!dragState.isDragging && Math.abs(deltaX) > 5) {
+        setDragState((prev) => (prev ? { ...prev, isDragging: true } : null));
+      }
+
+      if (dragState.isDragging && onEventTimeChange) {
+        onEventTimeChange(dragState.eventId, newTime);
+      }
+    },
+    [dragState, duration, onEventTimeChange]
+  );
+
+  const handleMouseUp = React.useCallback(() => {
+    setDragState(null);
+  }, []);
+
+  // マウスイベントリスナーの追加/削除
+  React.useEffect(() => {
+    if (dragState) {
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+      return () => {
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+      };
+    }
+  }, [dragState, handleMouseMove, handleMouseUp]);
   const getEventDuration = (event: TimelineEvent): number => {
     if (event.action === "startAnimation") {
       return (event.args.duration as number) || 1;
@@ -196,6 +254,20 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
 
   const timeMarks = generateTimeMarks();
 
+  // ツールチップの位置を動的に調整する関数
+  const getTooltipPosition = (eventPosition: number) => {
+    // 画面幅の20%と80%の間にある場合は中央配置
+    if (eventPosition >= 20 && eventPosition <= 80) {
+      return "left-1/2 transform -translate-x-1/2";
+    }
+    // 左端近くの場合は左寄せ
+    if (eventPosition < 20) {
+      return "left-0";
+    }
+    // 右端近くの場合は右寄せ
+    return "right-0";
+  };
+
   return (
     <div className="h-full flex flex-col bg-gray-800 text-white border-t border-gray-700">
       {/* コンパクトな再生コントロール */}
@@ -235,12 +307,12 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
       </div>
 
       {/* メインタイムライン */}
-      <div className="flex-1 min-h-0 overflow-auto px-6 py-4">
-        <div className="relative bg-gray-900 rounded-lg p-4">
+      <div className="flex flex-col flex-1 min-h-0 px-6 py-4">
+        <div className="flex-1 relative bg-gray-900 rounded-lg px-4 py-2 flex flex-col">
           {/* 時間軸の目盛り */}
-          <div className="relative mb-4">
+          <div className="relative mb-4 flex-shrink-0">
             {/* 目盛り線とラベル */}
-            <div className="relative h-6">
+            <div className="relative h-3">
               {timeMarks.map((mark, index) => (
                 <div
                   key={index}
@@ -248,12 +320,12 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   style={{ left: `${mark.position}%`, transform: "translateX(-50%)" }}
                 >
                   {/* 目盛り線 */}
-                  <div className="w-px h-4 bg-gray-500"></div>
+                  <div className="w-px h-2 bg-gray-500"></div>
                   {/* 時間ラベル */}
                   <span className="text-xs text-gray-400 mt-1">
                     {mark.time === Math.floor(mark.time)
-                      ? `${mark.time}s`
-                      : `${mark.time.toFixed(1)}s`}
+                      ? `${mark.time}`
+                      : `${mark.time.toFixed(1)}`}
                   </span>
                 </div>
               ))}
@@ -261,163 +333,194 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
           </div>
 
           {/* 多層イベントトラック */}
-          <div
-            className="relative min-h-[120px]"
-            style={{
-              height:
-                eventsWithTracks.trackCount > 0
-                  ? `${Math.max(3, eventsWithTracks.trackCount) * 40 + 20}px`
-                  : "120px",
-            }}
-          >
-            {/* メインのタイムライン軸（背景） */}
-            <div
-              className="absolute top-0 left-0 w-full h-8 bg-gray-700 rounded cursor-pointer z-10"
-              onClick={handleTimelineClick}
-              onDoubleClick={handleTimelineDoubleClick}
-              title="クリックでシーク、ダブルクリックでイベント挿入"
-            >
-              {/* 現在時刻のインジケーター */}
+          <div className="timeline-container relative overflow-auto flex-1 min-h-0">
+            <div className="relative h-full">
+              {/* メインのタイムライン軸（背景） */}
               <div
-                className="absolute top-0 w-1 h-full bg-white rounded shadow-lg z-50"
-                style={{
-                  left: `${(currentTime / duration) * 100}%`,
-                  transform: "translateX(-50%)",
-                }}
-              ></div>
-
-              {/* 再生済み部分 */}
-              <div
-                className="absolute top-0 left-0 h-full bg-blue-500 rounded opacity-30"
-                style={{ width: `${(currentTime / duration) * 100}%` }}
-              ></div>
-            </div>
-
-            {/* 計算済み領域の表示（背景バー） */}
-            {calculatedRegions.map((region, index) => {
-              const startPos = (region.start / duration) * 100;
-              const endPos = region.end === Infinity ? 100 : (region.end / duration) * 100;
-              const width = endPos - startPos;
-              return (
+                className="absolute top-0 left-0 w-full h-8 bg-gray-700 rounded cursor-pointer z-10"
+                onClick={handleTimelineClick}
+                onDoubleClick={handleTimelineDoubleClick}
+                title="クリックでシーク、ダブルクリックでイベント挿入"
+              >
+                {/* 現在時刻のインジケーター */}
                 <div
-                  key={`region-${index}`}
-                  className="absolute bg-green-200 opacity-20 rounded z-5"
+                  className="absolute top-0 w-1 h-full bg-white rounded shadow-lg z-50"
                   style={{
-                    left: `${startPos}%`,
-                    width: `${width}%`,
-                    height: "100%",
-                    top: 0,
+                    left: `${(currentTime / duration) * 100}%`,
+                    transform: "translateX(-50%)",
                   }}
-                  title={`Calculated region: ${region.start.toFixed(1)}s - ${
-                    region.end === Infinity ? "∞" : region.end.toFixed(1)
-                  }s`}
                 ></div>
-              );
-            })}
 
-            {/* イベントトラック */}
-            {eventsWithTracks.events.map((event, index) => (
-              <div
-                key={event.id || index}
-                className={`absolute rounded-md cursor-pointer hover:scale-105 transition-transform z-20 group ${
-                  selectedEventId === event.id ? "ring-2 ring-white ring-opacity-80" : ""
-                }`}
-                style={{
-                  left: `${event.left}%`,
-                  width: `${Math.max(event.width, 1)}%`,
-                  top: `${event.track * 35 + 10}px`,
-                  height: "30px",
-                  backgroundColor: getEventColor(event.action),
-                  border:
-                    selectedEventId === event.id
-                      ? "2px solid rgba(255,255,255,0.8)"
-                      : "2px solid rgba(255,255,255,0.3)",
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onEventSelect) {
-                    onEventSelect(event);
-                  } else {
-                    onSeek(event.time);
-                  }
-                }}
-                title={`${event.action} at ${event.time.toFixed(2)}s`}
-              >
-                {/* イベント内容 */}
-                <div className="px-2 py-1 text-xs text-white font-medium truncate">
-                  {event.action}
-                </div>
-
-                {/* ホバー時の詳細情報 */}
-                <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50 pointer-events-none">
-                  <div className="font-medium">{event.action}</div>
-                  <div className="text-gray-300">時刻: {event.time.toFixed(3)}s</div>
-                  <div className="text-gray-400 max-w-xs overflow-hidden">
-                    {JSON.stringify(event.args)}
-                  </div>
-                  {/* ツールチップの矢印 */}
-                  <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                    <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {/* 初期状態マーカー（時刻0） */}
-            <div className="absolute z-30" style={{ left: "0%", top: "0px" }}>
-              <div
-                className="w-4 h-8 bg-purple-500 rounded-sm transform -translate-x-1/2 relative border border-purple-400 shadow-sm cursor-pointer hover:bg-purple-400 transition-colors group"
-                onClick={() => onSeek(0)}
-                title="Initial State"
-              >
-                {/* 初期状態のツールチップ */}
-                <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50 pointer-events-none">
-                  <div className="font-medium text-purple-300">Initial State</div>
-                  <div className="text-gray-300">時刻: 0.0s</div>
-                  <div className="text-xs text-blue-300 mt-1 font-medium">クリックでシーク</div>
-                  {/* ツールチップの矢印 */}
-                  <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                    <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* StateEventマーカー */}
-            {stateEvents.map((stateEvent, index) => {
-              const position = (stateEvent.time / duration) * 100;
-              return (
+                {/* 再生済み部分 */}
                 <div
-                  key={stateEvent.id || `state-${index}`}
-                  className="absolute z-30"
-                  style={{ left: `${position}%`, top: "0px" }}
-                >
+                  className="absolute top-0 left-0 h-full bg-blue-500 rounded opacity-30"
+                  style={{ width: `${(currentTime / duration) * 100}%` }}
+                ></div>
+              </div>
+
+              {/* 計算済み領域の表示（背景バー） */}
+              {calculatedRegions.map((region, index) => {
+                const startPos = (region.start / duration) * 100;
+                const endPos = region.end === Infinity ? 100 : (region.end / duration) * 100;
+                const width = endPos - startPos;
+                return (
                   <div
-                    className="w-4 h-8 bg-green-500 rounded-sm transform -translate-x-1/2 relative border border-green-400 shadow-sm cursor-pointer hover:bg-green-400 transition-colors group"
-                    onClick={() => onSeek(stateEvent.time)}
-                    title={`State Event at ${formatTime(stateEvent.time)}`}
+                    key={`region-${index}`}
+                    className="absolute bg-green-200 opacity-20 rounded z-5"
+                    style={{
+                      left: `${startPos}%`,
+                      width: `${width}%`,
+                      height: "100%",
+                      top: 0,
+                    }}
+                    title={`Calculated region: ${region.start.toFixed(1)}s - ${
+                      region.end === Infinity ? "∞" : region.end.toFixed(1)
+                    }s`}
+                  ></div>
+                );
+              })}
+
+              {/* イベントトラック */}
+              {eventsWithTracks.events.map((event, index) => (
+                <div
+                  key={event.id || index}
+                  className={`absolute rounded-md cursor-pointer hover:scale-105 transition-transform z-20 group select-none ${
+                    selectedEventId === event.id ? "ring-2 ring-white ring-opacity-80" : ""
+                  } ${
+                    dragState && dragState.eventId === event.id && dragState.isDragging
+                      ? "cursor-move opacity-80"
+                      : ""
+                  }`}
+                  style={{
+                    left: `${event.left}%`,
+                    width: `${Math.max(event.width, 1)}%`,
+                    top: `${event.track * 35 + 10}px`,
+                    height: "30px",
+                    backgroundColor: getEventColor(event.action),
+                    border:
+                      selectedEventId === event.id
+                        ? "2px solid rgba(255,255,255,0.8)"
+                        : "2px solid rgba(255,255,255,0.3)",
+                  }}
+                  onMouseDown={(e) => handleMouseDown(event, e)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (dragState && dragState.isDragging) return; // ドラッグ中はクリックイベントを無視
+                    if (onEventSelect) {
+                      onEventSelect(event);
+                    } else {
+                      onSeek(event.time);
+                    }
+                  }}
+                  title={`${event.action} at ${event.time.toFixed(2)}s (ドラッグで移動可能)`}
+                >
+                  {/* イベント内容 */}
+                  <div className="px-2 py-1 text-xs text-white font-medium truncate">
+                    {event.action}
+                  </div>
+
+                  {/* ホバー時の詳細情報 */}
+                  <div
+                    className={`absolute bottom-full mb-2 ${getTooltipPosition(
+                      event.left
+                    )} bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none max-w-xs`}
+                    style={{ zIndex: 10000 }}
                   >
-                    {/* StateEventのツールチップ */}
-                    <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50 pointer-events-none">
-                      <div className="font-medium text-green-300">State Event</div>
-                      <div className="text-gray-300">時刻: {formatTime(stateEvent.time)}</div>
-                      <div className="text-gray-400">
-                        {stateEvent.description || "Captured state"}
-                      </div>
-                      <div className="text-xs text-blue-300 mt-1 font-medium">クリックでシーク</div>
-                      {/* ツールチップの矢印 */}
-                      <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                        <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
-                      </div>
+                    <div className="font-medium">{event.action}</div>
+                    <div className="text-gray-300">時刻: {event.time.toFixed(3)}s</div>
+                    <div className="text-gray-400 break-words">
+                      {JSON.stringify(event.args, null, 1)}
+                    </div>
+                    {/* ツールチップの矢印 */}
+                    <div
+                      className={`absolute top-full ${
+                        event.left >= 20 && event.left <= 80
+                          ? "left-1/2 transform -translate-x-1/2"
+                          : event.left < 20
+                          ? "left-4"
+                          : "right-4"
+                      }`}
+                    >
+                      <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
                     </div>
                   </div>
                 </div>
-              );
-            })}
+              ))}
+
+              {/* 初期状態マーカー（時刻0） */}
+              <div className="absolute z-30" style={{ left: "0%", top: "0px" }}>
+                <div
+                  className="w-4 h-8 bg-purple-500 rounded-sm transform -translate-x-1/2 relative border border-purple-400 shadow-sm cursor-pointer hover:bg-purple-400 transition-colors group"
+                  onClick={() => onSeek(0)}
+                  title="Initial State"
+                >
+                  {/* 初期状態のツールチップ */}
+                  <div
+                    className="absolute bottom-full mb-2 left-0 bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none max-w-xs"
+                    style={{ zIndex: 10000 }}
+                  >
+                    <div className="font-medium text-purple-300">Initial State</div>
+                    <div className="text-gray-300">時刻: 0.0s</div>
+                    <div className="text-xs text-blue-300 mt-1 font-medium">クリックでシーク</div>
+                    {/* ツールチップの矢印 */}
+                    <div className="absolute top-full left-4">
+                      <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* StateEventマーカー */}
+              {stateEvents.map((stateEvent, index) => {
+                const position = (stateEvent.time / duration) * 100;
+                return (
+                  <div
+                    key={stateEvent.id || `state-${index}`}
+                    className="absolute z-30"
+                    style={{ left: `${position}%`, top: "0px" }}
+                  >
+                    <div
+                      className="w-4 h-8 bg-green-500 rounded-sm transform -translate-x-1/2 relative border border-green-400 shadow-sm cursor-pointer hover:bg-green-400 transition-colors group"
+                      onClick={() => onSeek(stateEvent.time)}
+                      title={`State Event at ${formatTime(stateEvent.time)}`}
+                    >
+                      {/* StateEventのツールチップ */}
+                      <div
+                        className={`absolute bottom-full mb-2 ${getTooltipPosition(
+                          position
+                        )} bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none max-w-xs`}
+                        style={{ zIndex: 10000 }}
+                      >
+                        <div className="font-medium text-green-300">State Event</div>
+                        <div className="text-gray-300">時刻: {formatTime(stateEvent.time)}</div>
+                        <div className="text-gray-400 break-words">
+                          {stateEvent.description || "Captured state"}
+                        </div>
+                        <div className="text-xs text-blue-300 mt-1 font-medium">
+                          クリックでシーク
+                        </div>
+                        {/* ツールチップの矢印 */}
+                        <div
+                          className={`absolute top-full ${
+                            position >= 20 && position <= 80
+                              ? "left-1/2 transform -translate-x-1/2"
+                              : position < 20
+                              ? "left-4"
+                              : "right-4"
+                          }`}
+                        >
+                          <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* インタラクティブスライダー */}
-          <div className="relative">
+          <div className="relative flex-shrink-0">
             <input
               type="range"
               min={0}
@@ -425,11 +528,9 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
               step={0.1}
               value={currentTime}
               onChange={handleSliderChange}
-              className="timeline-slider w-full h-8 bg-transparent appearance-none cursor-pointer"
+              className="timeline-slider w-full bg-transparent appearance-none cursor-pointer"
               style={{
-                position: "absolute",
-                top: "-16px",
-                left: 0,
+                position: "relative",
                 zIndex: 10,
               }}
             />

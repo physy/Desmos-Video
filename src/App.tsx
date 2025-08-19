@@ -101,6 +101,7 @@ function App() {
     addEvent,
     insertEvent,
     removeEvent,
+    updateEvent,
     updateUnifiedEvent,
     getUnifiedEvent,
     captureCurrentState,
@@ -110,6 +111,18 @@ function App() {
     getDebugInfo,
     getDebugAtTime,
   } = useTimeline(calculator);
+
+  // イベント時間変更ハンドラー（ドラッグ対応）
+  const handleEventTimeChange = useCallback(
+    (eventId: string, newTime: number) => {
+      const event = project.timeline.find((e) => e.id === eventId);
+      if (event) {
+        updateEvent(eventId, { ...event, time: newTime });
+        console.log(`Moved event ${eventId} to time ${newTime.toFixed(3)}s`);
+      }
+    },
+    [project.timeline, updateEvent]
+  );
 
   const handleCalculatorReady = useCallback(
     (calc: Calculator) => {
@@ -565,8 +578,11 @@ function App() {
           </div>
 
           {/* 下部: タイムラインコントロール */}
-          <div className="h-full bg-white border-t border-gray-200 flex flex-col">
-            <div className="flex-1 min-h-0">
+          <div
+            className="h-full bg-white border-t border-gray-200 flex flex-col"
+            style={{ overflow: "visible" }}
+          >
+            <div className="flex-1 min-h-0" style={{ overflow: "visible" }}>
               <TimelineControls
                 currentTime={currentTime}
                 duration={project.duration}
@@ -580,6 +596,7 @@ function App() {
                 onInsertEvent={(time, event) => insertEvent({ ...event, time })}
                 onInsertState={(time) => captureCurrentState(`State at ${time.toFixed(1)}s`)}
                 onEventSelect={setSelectedEvent}
+                onEventTimeChange={handleEventTimeChange}
                 selectedEventId={selectedEvent?.id}
               />
             </div>
