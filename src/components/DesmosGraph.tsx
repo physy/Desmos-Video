@@ -42,12 +42,6 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
         border: false,
         lockViewport: false,
         branding: false,
-        mathBounds: {
-          left: -10,
-          right: 10,
-          top: 10,
-          bottom: -10,
-        },
         ...optionsRef.current,
       };
 

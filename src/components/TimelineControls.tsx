@@ -263,10 +263,11 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
           {/* 多層イベントトラック */}
           <div
             className="relative min-h-[120px]"
-            style={{ 
-              height: eventsWithTracks.trackCount > 0 
-                ? `${Math.max(3, eventsWithTracks.trackCount) * 40 + 20}px` 
-                : '120px' 
+            style={{
+              height:
+                eventsWithTracks.trackCount > 0
+                  ? `${Math.max(3, eventsWithTracks.trackCount) * 40 + 20}px`
+                  : "120px",
             }}
           >
             {/* メインのタイムライン軸（背景） */}

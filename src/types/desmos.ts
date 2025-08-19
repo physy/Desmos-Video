@@ -53,21 +53,93 @@ export interface MathBounds {
 }
 
 export interface GraphingCalculatorOptions {
+  // UI Components
   keypad?: boolean;
+  graphpaper?: boolean;
   expressions?: boolean;
   settingsMenu?: boolean;
   zoomButtons?: boolean;
+  showResetButtonOnGraphpaper?: boolean;
   expressionsTopbar?: boolean;
   pointsOfInterest?: boolean;
   trace?: boolean;
   border?: boolean;
   lockViewport?: boolean;
+  expressionsCollapsed?: boolean;
+  capExpressionSize?: boolean;
+  authorFeatures?: boolean;
+  images?: boolean;
+  imageUploadCallback?: (
+    file: File,
+    callback: (error: boolean | null, url?: string) => void
+  ) => void;
+  folders?: boolean;
+  notes?: boolean;
+  sliders?: boolean;
+  actions?: "auto" | boolean;
+  substitutions?: boolean;
+  links?: boolean;
+  qwertyKeyboard?: boolean;
+  distributions?: boolean;
+  restrictedFunctions?: boolean;
+  forceEnableGeometryFunctions?: boolean;
+  pasteGraphLink?: boolean;
+  pasteTableData?: boolean;
+  clearIntoDegreeMode?: boolean;
+  colors?: Record<string, string>;
+  autosize?: boolean;
+  plotInequalities?: boolean;
+  plotImplicits?: boolean;
+  plotSingleVariableImplicitEquations?: boolean;
+  projectorMode?: boolean;
+  decimalToFraction?: boolean;
+  fontSize?: number;
+  invertedColors?: boolean;
+  language?: string;
+  brailleMode?: "nemeth" | "ueb" | "none";
+  sixKeyInput?: boolean;
+  brailleControls?: boolean;
+  audio?: boolean;
+  graphDescription?: string;
+  zoomFit?: boolean;
+  forceLogModeRegressions?: boolean;
+  defaultLogModeRegressions?: boolean;
+  customRegressions?: boolean;
+  regressionTemplates?: boolean;
+  logScales?: boolean;
+  tone?: boolean;
+  intervalComprehensions?: boolean;
+  muted?: boolean;
+  allowComplex?: boolean;
+  reportPosition?: "coordinates" | "percents" | "default";
+  showEvaluationCopyButtons?: boolean;
+  onEvaluationCopyClick?: (latex: string) => void;
+  recursion?: boolean;
+
+  // Axis Settings
   xAxisNumbers?: boolean;
   yAxisNumbers?: boolean;
+  polarNumbers?: boolean;
+  xAxisStep?: number;
+  yAxisStep?: number;
+  xAxisMinorSubdivisions?: number;
+  yAxisMinorSubdivisions?: number;
+  xAxisArrowMode?: "NONE" | "POSITIVE" | "BOTH";
+  yAxisArrowMode?: "NONE" | "POSITIVE" | "BOTH";
+  xAxisLabel?: string;
+  yAxisLabel?: string;
+  xAxisScale?: "linear" | "logarithmic";
+  yAxisScale?: "linear" | "logarithmic";
+
+  // Graph Settings
+  degreeMode?: boolean;
   showGrid?: boolean;
+  polarMode?: boolean;
   showXAxis?: boolean;
   showYAxis?: boolean;
-  fontSize?: number;
+  randomSeed?: string;
+
+  // Legacy/Deprecated
   backgroundColor?: string;
   branding?: boolean;
   mathBounds?: MathBounds;

@@ -32,6 +32,7 @@ export interface DesmosExpression {
     min?: string;
     max?: string;
     step?: string;
+    animationPeriod?: number;
   };
 
   // Other Desmos properties
