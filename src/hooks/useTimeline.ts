@@ -2,25 +2,135 @@ import { useState, useCallback, useRef, useMemo } from "react";
 import type { Calculator } from "../types/desmos";
 import type {
   TimelineEvent,
-  StateEvent,
   ContinuousEvent,
   AnimationProject,
+  UnifiedEvent,
 } from "../types/timeline";
 import { StateManager } from "../utils/stateManager";
+
+// UnifiedEventをTimelineEventに変換する関数
+const convertUnifiedEventToTimelineEvent = (unifiedEvent: UnifiedEvent): TimelineEvent => {
+  switch (unifiedEvent.type) {
+    case "expression":
+      return {
+        id: unifiedEvent.id,
+        time: unifiedEvent.time,
+        action: "setExpression",
+        args: {
+          id: unifiedEvent.expressionId || "",
+          latex: unifiedEvent.properties?.latex || "",
+          hidden: unifiedEvent.properties?.hidden,
+          color: unifiedEvent.properties?.color,
+          lineStyle: unifiedEvent.properties?.lineStyle,
+          lineWidth: unifiedEvent.properties?.lineWidth,
+        },
+      };
+    case "bounds":
+      return {
+        id: unifiedEvent.id,
+        time: unifiedEvent.time,
+        action: "setMathBounds",
+        args: unifiedEvent.bounds || { left: -10, right: 10, top: 10, bottom: -10 },
+      };
+    case "animation":
+      return {
+        id: unifiedEvent.id,
+        time: unifiedEvent.time,
+        action: "startAnimation",
+        args: unifiedEvent.animation || { variable: "", startValue: 0, endValue: 1, duration: 1 },
+      };
+    default:
+      throw new Error(`Unknown unified event type: ${unifiedEvent.type}`);
+  }
+};
+
+// TimelineEventをUnifiedEventに変換する関数
+const convertTimelineEventToUnifiedEvent = (timelineEvent: TimelineEvent): UnifiedEvent => {
+  switch (timelineEvent.action) {
+    case "setExpression":
+      return {
+        id: timelineEvent.id || `event-${Date.now()}`,
+        time: timelineEvent.time,
+        type: "expression",
+        expressionId: (timelineEvent.args.id as string) || "",
+        properties: {
+          latex: timelineEvent.args.latex as string,
+          hidden: timelineEvent.args.hidden as boolean,
+          color: timelineEvent.args.color as string,
+          lineStyle: timelineEvent.args.lineStyle as "SOLID" | "DASHED" | "DOTTED",
+          lineWidth: timelineEvent.args.lineWidth as number,
+        },
+      };
+    case "setMathBounds":
+      return {
+        id: timelineEvent.id || `event-${Date.now()}`,
+        time: timelineEvent.time,
+        type: "bounds",
+        bounds: timelineEvent.args as { left: number; right: number; top: number; bottom: number },
+      };
+    case "startAnimation":
+      return {
+        id: timelineEvent.id || `event-${Date.now()}`,
+        time: timelineEvent.time,
+        type: "animation",
+        animation: timelineEvent.args as {
+          variable: string;
+          startValue: number;
+          endValue: number;
+          duration: number;
+        },
+      };
+    default:
+      // フォールバック: 既存のイベントを expression タイプとして扱う
+      return {
+        id: timelineEvent.id || `event-${Date.now()}`,
+        time: timelineEvent.time,
+        type: "expression",
+        expressionId: "",
+        properties: {},
+      };
+  }
+};
 
 export const useTimeline = (calculator: Calculator | null) => {
   const [project, setProject] = useState<AnimationProject>({
     initialState: {
-      expressions: [
-        { id: "1", latex: "x^2", hidden: false },
-        { id: "2", latex: "y=x+1", hidden: true },
-      ],
-      mathBounds: { left: -10, right: 10, top: 10, bottom: -10 },
-      settings: {},
+      version: 11,
+      randomSeed: "8eb0419a89e6a0b88664723b3d44dca7",
+      graph: {
+        viewport: {
+          xmin: -10,
+          ymin: -11.303462321792262,
+          xmax: 10,
+          ymax: 11.303462321792262,
+        },
+        __v12ViewportLatexStash: {
+          xmin: "-10",
+          xmax: "10",
+          ymin: "-11.303462321792262",
+          ymax: "11.303462321792262",
+        },
+      },
+      expressions: {
+        list: [
+          {
+            type: "expression",
+            id: "1",
+            color: "#c74440",
+            latex: "x^{2}",
+          },
+          {
+            type: "expression",
+            id: "36",
+            color: "#2d70b3",
+            latex: "y=x+1",
+          },
+        ],
+      },
+      includeFunctionParametersInRandomSeed: true,
+      doNotMigrateMovablePointStyle: true,
     },
     timeline: [
-      { id: "1", time: 2, action: "setHidden", args: { id: "1", hidden: true } },
-      { id: "2", time: 3, action: "setHidden", args: { id: "2", hidden: false } },
       {
         id: "3",
         time: 5,
@@ -39,12 +149,14 @@ export const useTimeline = (calculator: Calculator | null) => {
 
   // StateManagerのインスタンスを作成・管理
   const stateManager = useMemo(() => {
-    return new StateManager(
+    const manager = new StateManager(
       project.initialState,
       project.timeline,
       project.stateEvents,
       project.continuousEvents
     );
+
+    return manager;
   }, [project.initialState, project.timeline, project.stateEvents, project.continuousEvents]);
 
   // プロジェクトの参照を安定化
@@ -331,19 +443,8 @@ export const useTimeline = (calculator: Calculator | null) => {
   const updateInitialState = useCallback(() => {
     if (!calculator) return;
 
-    // 現在のcalculatorの状態をキャプチャして初期stateとして設定
-    const currentState = {
-      expressions: calculator.getExpressions().map((expr) => ({
-        id: expr.id,
-        latex: expr.latex,
-        hidden: expr.hidden || false,
-        color: expr.color || "#000000",
-        lineStyle: expr.lineStyle,
-        lineWidth: expr.lineWidth,
-      })),
-      mathBounds: calculator.graphpaperBounds.mathCoordinates,
-      settings: {},
-    };
+    // calculatorから実際のDesmosStateを取得
+    const currentState = calculator.getState();
 
     setProject((prev) => ({
       ...prev,
@@ -414,6 +515,33 @@ export const useTimeline = (calculator: Calculator | null) => {
     [stateManager]
   );
 
+  // UnifiedEventを更新する機能
+  const updateUnifiedEvent = useCallback(
+    (unifiedEvent: UnifiedEvent) => {
+      const timelineEvent = convertUnifiedEventToTimelineEvent(unifiedEvent);
+
+      setProject((prev) => ({
+        ...prev,
+        timeline: prev.timeline.map((event) =>
+          event.id === timelineEvent.id ? timelineEvent : event
+        ),
+      }));
+
+      // StateManagerのキャッシュをクリア
+      stateManager.clearCache();
+    },
+    [stateManager]
+  );
+
+  // TimelineEventをUnifiedEventとして取得する機能
+  const getUnifiedEvent = useCallback(
+    (eventId: string): UnifiedEvent | null => {
+      const timelineEvent = project.timeline.find((event) => event.id === eventId);
+      return timelineEvent ? convertTimelineEventToUnifiedEvent(timelineEvent) : null;
+    },
+    [project.timeline]
+  );
+
   return {
     project,
     setProject,
@@ -436,6 +564,8 @@ export const useTimeline = (calculator: Calculator | null) => {
     clearCache,
     getDebugInfo,
     getDebugAtTime,
+    updateUnifiedEvent,
+    getUnifiedEvent,
     stateManager,
   };
 };

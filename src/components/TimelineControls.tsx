@@ -20,6 +20,8 @@ interface TimelineControlsProps {
   onPause: () => void;
   onInsertEvent?: (time: number, event: Omit<TimelineEvent, "id" | "time">) => void;
   onInsertState?: (time: number) => void;
+  onEventSelect?: (event: TimelineEvent) => void;
+  selectedEventId?: string;
 }
 
 export const TimelineControls: React.FC<TimelineControlsProps> = ({
@@ -34,9 +36,11 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   onPause,
   onInsertEvent,
   onInsertState,
+  onEventSelect,
+  selectedEventId,
 }) => {
   const [showInsertMenu, setShowInsertMenu] = useState(false);
-  const [insertTime, setInsertTime] = useState(0);
+  const [insertTime] = useState(0);
 
   // イベントの継続時間を取得（デフォルトは0.1秒）
   const getEventDuration = (event: TimelineEvent): number => {
@@ -90,22 +94,14 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   // イベントタイプに応じた色を取得
   const getEventColor = (action: string): string => {
     switch (action) {
-      case "setHidden":
-        return "#ef4444"; // red
-      case "addExpression":
-        return "#22c55e"; // green
-      case "updateExpression":
+      case "setExpression":
         return "#f59e0b"; // orange
+      case "setMathBounds":
+        return "#84cc16"; // lime
       case "startAnimation":
         return "#8b5cf6"; // purple
       case "endAnimation":
         return "#6366f1"; // indigo
-      case "setVariable":
-        return "#06b6d4"; // cyan
-      case "setBounds":
-        return "#84cc16"; // lime
-      case "setMathBounds":
-        return "#84cc16"; // lime
       default:
         return "#6b7280"; // gray
     }
@@ -132,12 +128,35 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     const timelineWidth = rect.width;
     const clickTime = (clickX / timelineWidth) * duration;
 
-    // ダブルクリックで挿入メニューを表示
-    setInsertTime(clickTime);
-    setShowInsertMenu(true);
+    // 既存の式IDから次の番号を決定
+    const existingIds = timeline
+      .filter((event) => event.action === "setExpression")
+      .map((event) => event.args.id as string)
+      .filter((id) => id && id.startsWith("expr_"))
+      .map((id) => parseInt(id.replace("expr_", "")) || 0);
+
+    const nextId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
+
+    // ダブルクリックでデフォルトの式イベントを挿入
+    if (onInsertEvent) {
+      onInsertEvent(clickTime, {
+        action: "setExpression",
+        args: {
+          id: `expr_${nextId}`,
+          latex: `y = ${nextId === 1 ? "x" : `x^${nextId}`}`, // 1番目はy=x、2番目以降はy=x^n
+          color: ["#2563eb", "#dc2626", "#16a34a", "#ca8a04", "#9333ea"][nextId % 5] || "#6b7280",
+          hidden: false,
+        },
+      });
+
+      console.log(`Created expression event: expr_${nextId} at time ${clickTime.toFixed(2)}s`);
+    }
   };
 
-  const insertEventAtTime = (action: string, args: Record<string, unknown>) => {
+  const insertEventAtTime = (
+    action: "setExpression" | "setMathBounds" | "startAnimation" | "endAnimation",
+    args: Record<string, unknown>
+  ) => {
     if (onInsertEvent) {
       onInsertEvent(insertTime, { action, args });
     }
@@ -295,16 +314,28 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
             {eventsWithTracks.events.map((event, index) => (
               <div
                 key={event.id || index}
-                className="absolute rounded-md cursor-pointer hover:scale-105 transition-transform z-20 group"
+                className={`absolute rounded-md cursor-pointer hover:scale-105 transition-transform z-20 group ${
+                  selectedEventId === event.id ? "ring-2 ring-white ring-opacity-80" : ""
+                }`}
                 style={{
                   left: `${event.left}%`,
                   width: `${Math.max(event.width, 1)}%`,
                   top: `${event.track * 35 + 10}px`,
                   height: "30px",
                   backgroundColor: getEventColor(event.action),
-                  border: "2px solid rgba(255,255,255,0.3)",
+                  border:
+                    selectedEventId === event.id
+                      ? "2px solid rgba(255,255,255,0.8)"
+                      : "2px solid rgba(255,255,255,0.3)",
                 }}
-                onClick={() => onSeek(event.time)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onEventSelect) {
+                    onEventSelect(event);
+                  } else {
+                    onSeek(event.time);
+                  }
+                }}
                 title={`${event.action} at ${event.time.toFixed(2)}s`}
               >
                 {/* イベント内容 */}
@@ -446,19 +477,29 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
               </button>
 
               <button
-                onClick={() => insertEventAtTime("setHidden", { id: "1", hidden: true })}
-                className="w-full p-3 text-left bg-yellow-50 hover:bg-yellow-100 border border-yellow-200 rounded-lg"
-              >
-                <div className="font-medium text-yellow-800">式を非表示</div>
-                <div className="text-sm text-yellow-600">式を非表示にする</div>
-              </button>
+                onClick={() => {
+                  // 既存の式IDから次の番号を決定
+                  const existingIds = timeline
+                    .filter((event) => event.action === "setExpression")
+                    .map((event) => event.args.id as string)
+                    .filter((id) => id && id.startsWith("expr_"))
+                    .map((id) => parseInt(id.replace("expr_", "")) || 0);
 
-              <button
-                onClick={() => insertEventAtTime("setHidden", { id: "1", hidden: false })}
+                  const nextId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
+
+                  insertEventAtTime("setExpression", {
+                    id: `expr_${nextId}`,
+                    latex: `y = ${nextId === 1 ? "x" : `x^${nextId}`}`,
+                    color:
+                      ["#2563eb", "#dc2626", "#16a34a", "#ca8a04", "#9333ea"][nextId % 5] ||
+                      "#6b7280",
+                    hidden: false,
+                  });
+                }}
                 className="w-full p-3 text-left bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg"
               >
-                <div className="font-medium text-blue-800">式を表示</div>
-                <div className="text-sm text-blue-600">式を表示する</div>
+                <div className="font-medium text-blue-800">式イベント</div>
+                <div className="text-sm text-blue-600">新しい数式を追加</div>
               </button>
 
               <button

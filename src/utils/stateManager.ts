@@ -1,8 +1,6 @@
-import type { Calculator } from "../types/desmos";
+import type { Calculator, DesmosState } from "../types/desmos";
 import type {
-  DesmosState,
   DesmosExpression,
-  StateSnapshot,
   TimelineEvent,
   StateEvent,
   ContinuousEvent,
@@ -25,8 +23,8 @@ export class StateManager {
   private continuousEvents: ContinuousEvent[];
 
   // 計算済み領域の管理
-  private calculatedRegions: Array<{ start: number; end: number; startState: StateSnapshot }>;
-  private eventStateCache: Map<number, StateSnapshot>; // イベント直後の状態のみキャッシュ
+  private calculatedRegions: Array<{ start: number; end: number; startState: DesmosState }>;
+  private eventStateCache: Map<number, DesmosState>; // イベント直後の状態のみキャッシュ
 
   constructor(
     initialState: DesmosState,
@@ -74,12 +72,12 @@ export class StateManager {
         this.calculatedRegions.push({
           start: regionStart,
           end: regionEnd,
-          startState: this.createSnapshotFromDesmosState(insertedState.state, regionStart),
+          startState: this.createSnapshotFromDesmosState(insertedState.state),
         });
       } else {
         // イベントがある場合の処理を改善
         let currentTime = regionStart;
-        let currentState = this.createSnapshotFromDesmosState(insertedState.state, regionStart);
+        let currentState = this.createSnapshotFromDesmosState(insertedState.state);
 
         for (const event of eventsInRegion) {
           // イベント前までの領域を作成（初期状態からイベントまで）
@@ -87,22 +85,19 @@ export class StateManager {
             this.calculatedRegions.push({
               start: currentTime,
               end: event.time,
-              startState: { ...currentState },
+              startState: this.createSnapshotFromDesmosState(currentState),
             });
           }
 
-          // イベントを適用した新しい状態を作成
-          if (event.time === currentTime) {
-            // 開始時刻にイベントがある場合（時刻0のイベントなど）
-            currentState = this.createSnapshotWithEvent(currentState, event);
-          } else {
-            // 通常のイベント処理
-            currentState = this.createSnapshotWithEvent(currentState, event);
-          }
+          // イベントを適用した新しい状態を作成（deep copyで独立した状態を作成）
+          const postEventState = this.createSnapshotFromDesmosState(currentState);
+          this.applyEventToSnapshot(postEventState, event);
 
           // イベント直後の状態をキャッシュ
-          this.eventStateCache.set(event.time, { ...currentState });
+          this.eventStateCache.set(event.time, this.createSnapshotFromDesmosState(postEventState));
 
+          // 次のイベントのために現在の状態を更新
+          currentState = postEventState;
           currentTime = event.time;
         }
 
@@ -111,7 +106,7 @@ export class StateManager {
           this.calculatedRegions.push({
             start: currentTime,
             end: regionEnd,
-            startState: { ...currentState },
+            startState: this.createSnapshotFromDesmosState(currentState),
           });
         }
       }
@@ -122,7 +117,7 @@ export class StateManager {
       this.calculatedRegions.map((r) => ({
         start: r.start,
         end: r.end,
-        startStateTime: r.startState.time,
+        startStateExpressions: r.startState.expressions.list.length,
       }))
     );
   }
@@ -135,7 +130,7 @@ export class StateManager {
   }
 
   // 指定時刻の状態を取得（計算済み領域内のみ）
-  getStateAtTime(time: number): StateSnapshot {
+  getStateAtTime(time: number): DesmosState {
     // 計算済み領域を検索
     const region = this.calculatedRegions.find(
       (region) => time >= region.start && (time <= region.end || region.end === Infinity)
@@ -157,10 +152,7 @@ export class StateManager {
 
     if (eventsInRegion.length === 0) {
       // イベントがない場合、領域の開始状態をそのまま返す
-      return {
-        ...region.startState,
-        time: time,
-      };
+      return this.createSnapshotFromDesmosState(region.startState);
     }
 
     // イベントがある場合、最後のイベント直後の状態から計算
@@ -169,30 +161,19 @@ export class StateManager {
 
     if (eventState) {
       // キャッシュされたイベント後状態を使用
-      return {
-        ...eventState,
-        time: time,
-      };
+      return this.createSnapshotFromDesmosState(eventState);
     }
 
     // キャッシュがない場合は領域開始状態から計算
-    const currentState = { ...region.startState };
+    const currentState = this.createSnapshotFromDesmosState(region.startState);
 
     for (const event of eventsInRegion) {
       this.applyEventToSnapshot(currentState, event);
       // イベント直後の状態をキャッシュ
-      this.eventStateCache.set(event.time, { ...currentState, time: event.time });
+      this.eventStateCache.set(event.time, this.createSnapshotFromDesmosState(currentState));
     }
 
-    const finalState = {
-      ...currentState,
-      time: time,
-    };
-
-    // 変数アニメーションの補間処理
-    this.applyVariableAnimations(finalState, time);
-
-    return finalState;
+    return this.createSnapshotFromDesmosState(currentState);
   }
 
   // 指定時刻から計算を進める（イベント実行により計算済み領域を拡張）
@@ -266,19 +247,12 @@ export class StateManager {
     for (const event of eventsToProcess) {
       debugLog(`Processing event at ${event.time}s: ${event.action}`);
 
-      // 前の状態をベースにイベントを適用（deep copy）
-      const postEventState: StateSnapshot = {
-        ...currentState,
-        expressions: currentState.expressions.map((expr) => ({ ...expr })),
-        mathBounds: { ...currentState.mathBounds },
-        settings: { ...currentState.settings },
-        variables: { ...currentState.variables },
-      };
+      // 前の状態をベースにイベントを適用（完全なdeep copy）
+      const postEventState = this.createSnapshotFromDesmosState(currentState);
       this.applyEventToSnapshot(postEventState, event);
-      postEventState.time = event.time;
 
       // イベント直後の状態をキャッシュ
-      this.eventStateCache.set(event.time, { ...postEventState });
+      this.eventStateCache.set(event.time, this.createSnapshotFromDesmosState(postEventState));
 
       // 新しい計算済み領域を作成（イベント直後から次のイベントまたは終了時刻まで）
       const nextEvent = eventsToProcess.find((e) => e.time > event.time);
@@ -290,7 +264,7 @@ export class StateManager {
         this.calculatedRegions.push({
           start: event.time,
           end: regionEnd,
-          startState: { ...postEventState },
+          startState: this.createSnapshotFromDesmosState(postEventState),
         });
         debugLog(`Created new calculated region: ${event.time}s to ${regionEnd}s`);
       } else {
@@ -321,7 +295,7 @@ export class StateManager {
     eventTimes.add(0); // 初期時刻も保護
 
     // 重複や隣接する領域をマージ（ただしイベント境界は跨がない）
-    const optimized: Array<{ start: number; end: number; startState: StateSnapshot }> = [];
+    const optimized: Array<{ start: number; end: number; startState: DesmosState }> = [];
 
     for (const region of this.calculatedRegions) {
       if (optimized.length === 0) {
@@ -476,10 +450,10 @@ export class StateManager {
       const state = this.getStateAtTime(time);
       this.applyStateToCalculator(state, calculator);
 
-      debugLog(`StateManager: Applied state with ${state.expressions.length} expressions`);
+      debugLog(`StateManager: Applied state with ${state.expressions.list.length} expressions`);
 
       // デバッグ用：適用された式の内容をログ出力
-      state.expressions.forEach((expr: DesmosExpression) => {
+      state.expressions.list.forEach((expr: DesmosExpression) => {
         debugLog(`  Expression ${expr.id}: ${expr.latex} (hidden: ${expr.hidden})`);
       });
     } catch (error) {
@@ -523,14 +497,14 @@ export class StateManager {
   }
 
   // stateをcalculatorに適用
-  applyStateToCalculator(state: StateSnapshot, calculator: Calculator): void {
+  applyStateToCalculator(state: DesmosState, calculator: Calculator): void {
     try {
       // 現在の式のIDリストを取得
       const currentExpressions = calculator.getExpressions();
       const currentIds = new Set(currentExpressions.map((expr) => expr.id));
 
       // 目標stateで必要な式のIDリスト
-      const targetIds = new Set(state.expressions.map((expr) => expr.id));
+      const targetIds = new Set(state.expressions.list.map((expr) => expr.id));
 
       // 不要な式を削除
       currentIds.forEach((id) => {
@@ -544,42 +518,35 @@ export class StateManager {
       });
 
       // mathBoundsを設定
-      if (state.mathBounds) {
+      if (state.graph?.viewport) {
         try {
-          calculator.setMathBounds(state.mathBounds);
+          const viewport = state.graph.viewport;
+          calculator.setMathBounds({
+            left: viewport.xmin,
+            right: viewport.xmax,
+            bottom: viewport.ymin,
+            top: viewport.ymax,
+          });
         } catch (error) {
           console.warn("Failed to set math bounds:", error);
         }
       }
 
       // 式を設定/更新
-      state.expressions.forEach((expr) => {
+      state.expressions.list.forEach((expr) => {
         try {
-          const expressionData: {
-            id: string;
-            latex: string;
-            hidden?: boolean;
-            color?: string;
-            lineStyle?: string;
-            lineWidth?: number;
-          } = {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const expressionData: any = {
             id: expr.id,
             latex: expr.latex,
           };
 
-          // オプションのプロパティを条件付きで追加
-          if (expr.hidden !== undefined) {
-            expressionData.hidden = expr.hidden;
-          }
-          if (expr.color) {
-            expressionData.color = expr.color;
-          }
-          if (expr.lineStyle) {
-            expressionData.lineStyle = expr.lineStyle;
-          }
-          if (expr.lineWidth !== undefined) {
-            expressionData.lineWidth = expr.lineWidth;
-          }
+          // 全てのプロパティを動的に追加（undefined以外）
+          Object.entries(expr).forEach(([key, value]) => {
+            if (key !== "id" && key !== "latex" && value !== undefined) {
+              expressionData[key] = value;
+            }
+          });
 
           calculator.setExpression(expressionData);
         } catch (error) {
@@ -587,28 +554,7 @@ export class StateManager {
         }
       });
 
-      // 変数を設定
-      Object.entries(state.variables).forEach(([name, value]) => {
-        try {
-          calculator.setExpression({
-            id: `var_${name}`,
-            latex: `${name}=${value}`,
-          });
-        } catch (error) {
-          console.warn(`Failed to set variable ${name}:`, error);
-        }
-      });
-
-      // 設定を適用
-      Object.entries(state.settings).forEach(([key, value]) => {
-        try {
-          if (calculator.updateSettings) {
-            calculator.updateSettings({ [key]: value });
-          }
-        } catch (error) {
-          console.warn(`Failed to update setting ${key}:`, error);
-        }
-      });
+      // DesmosStateには変数や設定は含まれていません
     } catch (error) {
       console.error("Error applying state to calculator:", error);
     }
@@ -698,139 +644,139 @@ export class StateManager {
 
   // calculatorの現在stateをキャプチャ
   private captureCalculatorState(calculator: Calculator): DesmosState {
-    const expressions = calculator.getExpressions().map((expr) => ({
-      id: expr.id,
-      latex: expr.latex,
-      hidden: expr.hidden || false,
-      color: expr.color || "#000000",
-      lineStyle: expr.lineStyle,
-      lineWidth: expr.lineWidth,
-    }));
+    try {
+      // 実際のgetState()を使用
+      return calculator.getState();
+    } catch (error) {
+      debugLog("Error capturing calculator state, using fallback:", error);
 
-    // graphpaperBounds.mathCoordinatesを使用（getMathBoundsは存在しない）
-    const mathBounds = calculator.graphpaperBounds?.mathCoordinates || {
-      left: -10,
-      right: 10,
-      top: 10,
-      bottom: -10,
-    };
+      // フォールバック実装
+      const expressions = calculator.getExpressions().map((expr) => ({
+        id: expr.id,
+        latex: expr.latex,
+        hidden: expr.hidden || false,
+        color: expr.color || "#000000",
+        lineStyle: expr.lineStyle,
+        lineWidth: expr.lineWidth,
+      }));
 
-    return {
-      expressions,
-      mathBounds: {
-        left: mathBounds.left,
-        right: mathBounds.right,
-        top: mathBounds.top,
-        bottom: mathBounds.bottom,
-      },
-      settings: {},
-    };
+      // graphpaperBounds.mathCoordinatesを使用
+      const mathCoords = calculator.graphpaperBounds?.mathCoordinates || {
+        left: -10,
+        right: 10,
+        top: 10,
+        bottom: -10,
+      };
+
+      return {
+        version: 11,
+        randomSeed: Math.random().toString(36),
+        graph: {
+          viewport: {
+            xmin: mathCoords.left,
+            ymin: mathCoords.bottom,
+            xmax: mathCoords.right,
+            ymax: mathCoords.top,
+          },
+          showGrid: true,
+          showXAxis: true,
+          showYAxis: true,
+        },
+        expressions: {
+          list: expressions as DesmosExpression[],
+        },
+      };
+    }
   }
 
-  // DesmosStateからSnapshotを作成
-  private createSnapshotFromDesmosState(state: DesmosState, time: number): StateSnapshot {
-    return {
-      time,
-      expressions: state.expressions.map((expr) => ({ ...expr })), // deep copy
-      mathBounds: { ...state.mathBounds },
-      settings: { ...state.settings },
-      variables: {},
+  // DesmosStateからSnapshotを作成（完全なdeep copy）
+  private createSnapshotFromDesmosState(state: DesmosState): DesmosState {
+    const result: DesmosState = {
+      ...state,
+      expressions: {
+        ...state.expressions,
+        list: state.expressions.list.map((expr: DesmosExpression) => ({
+          ...expr,
+          // 深いコピーのため、式のプロパティもコピー
+          type: expr.type,
+          id: expr.id,
+          latex: expr.latex,
+          hidden: expr.hidden,
+          color: expr.color,
+          lineStyle: expr.lineStyle,
+          lineWidth: expr.lineWidth,
+        })),
+      },
     };
+
+    // graphプロパティを個別に処理
+    if (state.graph) {
+      result.graph = {
+        ...state.graph,
+        viewport: state.graph.viewport
+          ? { ...state.graph.viewport }
+          : {
+              xmin: -10,
+              ymin: -10,
+              xmax: 10,
+              ymax: 10,
+            },
+      };
+    }
+
+    return result;
   }
 
   // Snapshotにイベントを適用（単一イベント用）
-  private applyEventToSnapshot(snapshot: StateSnapshot, event: TimelineEvent): void {
+  private applyEventToSnapshot(snapshot: DesmosState, event: TimelineEvent): void {
     switch (event.action) {
-      case "addExpression": {
-        const newExpr = {
+      case "setExpression": {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const newExpr: any = {
           id: event.args.id as string,
           latex: event.args.latex as string,
           hidden: (event.args.hidden as boolean) || false,
           color: (event.args.color as string) || "#000000",
-          lineStyle: event.args.lineStyle as string,
-          lineWidth: event.args.lineWidth as number,
+          lineStyle: event.args.lineStyle,
+          lineWidth: event.args.lineWidth,
         };
 
         // 既存の式を更新または追加
-        const existingIndex = snapshot.expressions.findIndex((expr) => expr.id === newExpr.id);
-        if (existingIndex >= 0) {
-          snapshot.expressions[existingIndex] = newExpr;
+        const existingIndex = snapshot.expressions.list.findIndex((expr) => expr.id === newExpr.id);
+        if (existingIndex !== -1) {
+          snapshot.expressions.list[existingIndex] = newExpr;
         } else {
-          snapshot.expressions.push(newExpr);
-        }
-        break;
-      }
-
-      case "removeExpression":
-        snapshot.expressions = snapshot.expressions.filter(
-          (expr) => expr.id !== (event.args.id as string)
-        );
-        break;
-
-      case "setHidden": {
-        const exprToHide = snapshot.expressions.find(
-          (expr) => expr.id === (event.args.id as string)
-        );
-        if (exprToHide) {
-          exprToHide.hidden = event.args.hidden as boolean;
-        }
-        break;
-      }
-
-      case "updateExpression": {
-        const exprToUpdate = snapshot.expressions.find(
-          (expr) => expr.id === (event.args.id as string)
-        );
-        if (exprToUpdate) {
-          // プロパティを更新
-          if (event.args.color) exprToUpdate.color = event.args.color as string;
-          if (event.args.hidden !== undefined) exprToUpdate.hidden = event.args.hidden as boolean;
-          if (event.args.latex) exprToUpdate.latex = event.args.latex as string;
-          if (event.args.lineStyle) exprToUpdate.lineStyle = event.args.lineStyle as string;
-          if (event.args.lineWidth) exprToUpdate.lineWidth = event.args.lineWidth as number;
+          snapshot.expressions.list.push(newExpr);
         }
         break;
       }
 
       case "startAnimation": {
         // アニメーション開始 - 変数の初期値を設定
+        // 注意: DesmosStateには直接変数プロパティがないため、
+        // 実際の実装では式として処理する必要があります
         const { variable, startValue } = event.args;
-        snapshot.variables[variable as string] = startValue as number;
+        console.log(`Start animation: ${variable} = ${startValue}`);
         break;
       }
 
       case "endAnimation": {
         // アニメーション終了 - 変数の最終値を設定
         const { variable, value } = event.args;
-        snapshot.variables[variable as string] = value as number;
+        console.log(`End animation: ${variable} = ${value}`);
         break;
       }
 
       case "setMathBounds":
-        snapshot.mathBounds = {
-          left: event.args.left as number,
-          right: event.args.right as number,
-          top: event.args.top as number,
-          bottom: event.args.bottom as number,
-        };
-        break;
-
-      case "setBounds":
-        // setBoundsのエイリアス
-        snapshot.mathBounds = {
-          left: event.args.left as number,
-          right: event.args.right as number,
-          top: event.args.top as number,
-          bottom: event.args.bottom as number,
-        };
-        break;
-
-      case "setVariable":
-        snapshot.variables[event.args.name as string] = event.args.value as number;
-        break;
-
-      case "updateSettings":
-        Object.assign(snapshot.settings, event.args);
+        // ビューポートを設定
+        if (snapshot.graph) {
+          snapshot.graph.viewport = {
+            xmin: event.args.left as number,
+            ymin: event.args.bottom as number,
+            xmax: event.args.right as number,
+            ymax: event.args.top as number,
+          };
+        }
         break;
 
       default:
@@ -838,70 +784,7 @@ export class StateManager {
     }
   }
 
-  // 変数アニメーションの補間処理
-  private applyVariableAnimations(snapshot: StateSnapshot, time: number): void {
-    // startAnimationとendAnimationのペアを見つけて補間
-    const animationEvents = this.timeline.filter(
-      (event) => event.action === "startAnimation" || event.action === "endAnimation"
-    );
-
-    // 変数ごとにアニメーションをグループ化
-    const animationsByVariable = new Map<string, TimelineEvent[]>();
-
-    animationEvents.forEach((event) => {
-      const variable = event.args.variable as string;
-      if (!animationsByVariable.has(variable)) {
-        animationsByVariable.set(variable, []);
-      }
-      animationsByVariable.get(variable)!.push(event);
-    });
-
-    // 各変数のアニメーションを処理
-    for (const [variable, events] of animationsByVariable) {
-      // 時刻順にソート
-      events.sort((a, b) => a.time - b.time);
-
-      // 現在時刻で有効なアニメーションを探す
-      for (let i = 0; i < events.length - 1; i++) {
-        const startEvent = events[i];
-        const endEvent = events[i + 1];
-
-        if (
-          startEvent.action === "startAnimation" &&
-          endEvent.action === "endAnimation" &&
-          time >= startEvent.time &&
-          time <= endEvent.time
-        ) {
-          // 補間処理
-          const progress = (time - startEvent.time) / (endEvent.time - startEvent.time);
-          const startValue = startEvent.args.startValue as number;
-          const endValue = startEvent.args.endValue as number;
-
-          // 線形補間（後でイージング関数を追加可能）
-          const interpolatedValue = startValue + (endValue - startValue) * progress;
-
-          snapshot.variables[variable] = interpolatedValue;
-          break;
-        }
-      }
-    }
-  }
-
-  // イベントを適用した新しいスナップショットを作成
-  private createSnapshotWithEvent(snapshot: StateSnapshot, event: TimelineEvent): StateSnapshot {
-    const newSnapshot: StateSnapshot = {
-      time: snapshot.time,
-      expressions: [...snapshot.expressions],
-      mathBounds: { ...snapshot.mathBounds },
-      settings: { ...snapshot.settings },
-      variables: { ...snapshot.variables },
-    };
-
-    // イベントを新しいスナップショットに適用
-    this.applyEventToSnapshot(newSnapshot, event);
-
-    return newSnapshot;
-  }
+  // 変数アニメーションの補間処理は新システムでは不要
 
   // デバッグ情報のゲッター
   getDebugInfo() {
@@ -909,8 +792,7 @@ export class StateManager {
       calculatedRegions: this.calculatedRegions.map((r) => ({
         start: r.start,
         end: r.end,
-        startStateTime: r.startState.time,
-        startStateExpressions: r.startState.expressions.length,
+        startStateExpressions: r.startState.expressions.list.length,
       })),
       eventCache: Array.from(this.eventStateCache.keys()).sort((a, b) => a - b),
       timelineEvents: this.timeline.map((e) => ({
@@ -936,7 +818,6 @@ export class StateManager {
         ? {
             start: region.start,
             end: region.end,
-            startStateTime: region.startState.time,
           }
         : null,
       nearbyEvents: nearbyEvents.map((e) => ({

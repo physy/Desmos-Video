@@ -9,6 +9,49 @@ declare global {
   }
 }
 
+// 実際のDesmos状態の構造
+export interface DesmosState {
+  version: number;
+  randomSeed: string;
+  graph: {
+    viewport: {
+      xmin: number;
+      ymin: number;
+      xmax: number;
+      ymax: number;
+    };
+    showGrid?: boolean;
+    showXAxis?: boolean;
+    showYAxis?: boolean;
+    complex?: boolean;
+    __v12ViewportLatexStash?: {
+      xmin: string;
+      xmax: string;
+      ymin: string;
+      ymax: string;
+    };
+  };
+  expressions: {
+    list: DesmosExpression[];
+    ticker?: {
+      handlerLatex?: string;
+      minStepLatex?: string;
+      playing?: boolean;
+      open?: boolean;
+    };
+  };
+  includeFunctionParametersInRandomSeed?: boolean;
+  doNotMigrateMovablePointStyle?: boolean;
+}
+
+// Math Bounds（互換性のため）
+export interface MathBounds {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
 export interface GraphingCalculatorOptions {
   keypad?: boolean;
   expressions?: boolean;
@@ -27,12 +70,7 @@ export interface GraphingCalculatorOptions {
   fontSize?: number;
   backgroundColor?: string;
   branding?: boolean;
-  mathBounds?: {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-  };
+  mathBounds?: MathBounds;
 }
 
 export interface Calculator {
@@ -45,17 +83,13 @@ export interface Calculator {
     lineWidth?: number;
   }) => void;
   removeExpression: (options: { id: string }) => void;
-  setMathBounds: (bounds: { left: number; right: number; top: number; bottom: number }) => void;
+  setMathBounds: (bounds: MathBounds) => void;
   getExpressions: () => DesmosExpression[];
-  getState: () => unknown;
-  setState: (state: unknown) => void;
+  getState: () => DesmosState;
+  setState: (state: DesmosState) => void;
   updateSettings: (settings: Record<string, unknown>) => void;
   graphpaperBounds: {
-    mathCoordinates: {
-      left: number;
-      right: number;
-      top: number;
-      bottom: number;
+    mathCoordinates: MathBounds & {
       width: number;
       height: number;
     };

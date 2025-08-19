@@ -1,8 +1,10 @@
 import { useState, useCallback } from "react";
 import { DesmosGraph } from "./components/DesmosGraph";
 import { TimelineControls } from "./components/TimelineControls";
+import { UnifiedEventEditPanel } from "./components/UnifiedEventEditPanel";
 import { useTimeline } from "./hooks/useTimeline";
 import type { Calculator } from "./types/desmos";
+import type { TimelineEvent } from "./types/timeline";
 import "./App.css";
 
 // デバッグモードのフラグ（開発時に true にする）
@@ -10,7 +12,9 @@ const DEBUG_MODE = false;
 
 function App() {
   const [calculator, setCalculator] = useState<Calculator | null>(null);
-  const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline">("state");
+  const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline">("events");
+  const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
+
   const {
     project,
     currentTime,
@@ -20,8 +24,9 @@ function App() {
     pause,
     addEvent,
     insertEvent,
-    updateEvent,
     removeEvent,
+    updateUnifiedEvent,
+    getUnifiedEvent,
     captureCurrentState,
     createCheckpoint,
     updateInitialState,
@@ -59,18 +64,6 @@ function App() {
   const addDemoEvents = useCallback(() => {
     // デモイベントを追加
     addEvent({
-      time: 2,
-      action: "setHidden",
-      args: { id: "demo1", hidden: true },
-    });
-
-    addEvent({
-      time: 2.5,
-      action: "setHidden",
-      args: { id: "demo2", hidden: false },
-    });
-
-    addEvent({
       time: 5,
       action: "setMathBounds",
       args: { left: -5, right: 5, top: 3, bottom: -3 },
@@ -78,7 +71,7 @@ function App() {
 
     addEvent({
       time: 7,
-      action: "addExpression",
+      action: "setExpression",
       args: {
         id: "demo3",
         latex: "y = x^2",
@@ -120,7 +113,7 @@ function App() {
         `=== 計算済み領域 ===\n` +
         `Regions Count: ${debugInfo.detailedDebug.calculatedRegions.length}\n` +
         debugInfo.detailedDebug.calculatedRegions
-          .map((r, i) => `${i + 1}. ${r.start}s-${r.end}s (start state: ${r.startStateTime}s)`)
+          .map((r, i) => `${i + 1}. ${r.start}s-${r.end}s`)
           .join("\n") +
         "\n\n" +
         `=== イベント ===\n` +
@@ -359,228 +352,28 @@ function App() {
               )}
 
               {activeTab === "events" && (
-                <div>
-                  <h2 className="text-lg font-semibold mb-4">イベント管理</h2>
-
-                  {/* イベント作成 */}
-                  <div className="mb-6 space-y-3">
-                    <h3 className="text-md font-medium text-gray-800">新規イベント作成</h3>
-
-                    {/* 基本イベント */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => {
-                          insertEvent({
-                            time: currentTime,
-                            action: "setHidden",
-                            args: { id: "demo1", hidden: true },
-                          });
-                        }}
-                        className="px-3 py-2 text-xs bg-red-500 text-white rounded hover:bg-red-600"
-                      >
-                        非表示
-                      </button>
-                      <button
-                        onClick={() => {
-                          insertEvent({
-                            time: currentTime,
-                            action: "setHidden",
-                            args: { id: "demo1", hidden: false },
-                          });
-                        }}
-                        className="px-3 py-2 text-xs bg-green-500 text-white rounded hover:bg-green-600"
-                      >
-                        表示
-                      </button>
-                    </div>
-
-                    {/* 式追加 */}
-                    <button
-                      onClick={() => {
-                        const latex = prompt("式を入力してください:", "y = x^2");
-                        if (latex) {
-                          insertEvent({
-                            time: currentTime,
-                            action: "addExpression",
-                            args: {
-                              id: `expr_${Date.now()}`,
-                              latex,
-                              color: "#2563eb",
-                            },
-                          });
-                        }
-                      }}
-                      className="w-full px-3 py-2 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
-                    >
-                      式を追加
-                    </button>
-
-                    {/* 変数アニメーション */}
-                    <button
-                      onClick={() => {
-                        const varName = prompt("変数名を入力してください:", "a");
-                        const startVal = prompt("開始値:", "1");
-                        const endVal = prompt("終了値:", "5");
-                        const duration = prompt("継続時間（秒）:", "2");
-
-                        if (varName && startVal && endVal && duration) {
-                          // アニメーション開始イベント
-                          insertEvent({
-                            time: currentTime,
-                            action: "startAnimation",
-                            args: {
-                              variable: varName,
-                              startValue: parseFloat(startVal),
-                              endValue: parseFloat(endVal),
-                              duration: parseFloat(duration),
-                            },
-                          });
-
-                          // アニメーション終了イベント
-                          insertEvent({
-                            time: currentTime + parseFloat(duration),
-                            action: "endAnimation",
-                            args: {
-                              variable: varName,
-                              value: parseFloat(endVal),
-                            },
-                          });
-                        }
-                      }}
-                      className="w-full px-3 py-2 text-sm bg-purple-500 text-white rounded hover:bg-purple-600"
-                    >
-                      変数アニメーション
-                    </button>
-
-                    {/* プロパティ変更 */}
-                    <button
-                      onClick={() => {
-                        const id = prompt("Expression ID:", "demo1");
-                        const property = prompt(
-                          "プロパティ (color, lineStyle, pointStyle, etc.):",
-                          "color"
-                        );
-                        const value = prompt("値:", "#ff0000");
-
-                        if (id && property && value) {
-                          insertEvent({
-                            time: currentTime,
-                            action: "updateExpression",
-                            args: {
-                              id,
-                              [property]: value,
-                            },
-                          });
-                        }
-                      }}
-                      className="w-full px-3 py-2 text-sm bg-orange-500 text-white rounded hover:bg-orange-600"
-                    >
-                      プロパティ変更
-                    </button>
-                  </div>
-
-                  {/* Timeline Events */}
-                  <div className="mb-6">
-                    <div className="flex justify-between items-center mb-2">
-                      <h3 className="text-md font-medium text-gray-800">Timeline Events</h3>
-                      <span className="text-xs text-gray-500">{project.timeline.length}件</span>
-                    </div>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {project.timeline.length === 0 ? (
-                        <p className="text-gray-500 text-sm">
-                          イベントがありません。上のボタンまたはタイムライン上でダブルクリックしてください。
-                        </p>
-                      ) : (
-                        project.timeline.map((event, index) => (
-                          <div
-                            key={event.id || index}
-                            className="p-2 border border-blue-200 rounded bg-blue-50 hover:bg-blue-100"
-                          >
-                            <div className="flex justify-between items-start">
-                              <div
-                                className="cursor-pointer flex-1"
-                                onClick={() => seekTo(event.time)}
-                                title="クリックでその時刻にジャンプ"
-                              >
-                                <div className="text-sm font-medium text-blue-700">
-                                  {event.time.toFixed(2)}s: {event.action}
-                                </div>
-                                <div className="text-xs text-blue-600 mt-1 font-mono">
-                                  {JSON.stringify(event.args)}
-                                </div>
-                              </div>
-                              <div className="flex gap-1 ml-2">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const newTime = prompt(
-                                      `新しい時刻を入力してください (現在: ${event.time}s):`,
-                                      event.time.toString()
-                                    );
-                                    if (newTime && !isNaN(parseFloat(newTime))) {
-                                      updateEvent(event.id!, { time: parseFloat(newTime) });
-                                    }
-                                  }}
-                                  className="px-2 py-1 text-xs bg-yellow-500 text-white rounded hover:bg-yellow-600"
-                                  title="時刻を編集"
-                                >
-                                  編集
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (
-                                      confirm(
-                                        `イベント "${event.action}" (${event.time}s) を削除しますか？`
-                                      )
-                                    ) {
-                                      removeEvent(event.id!);
-                                    }
-                                  }}
-                                  className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
-                                  title="削除"
-                                >
-                                  削除
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-
-                  {/* State Events */}
-                  <div className="mb-6">
-                    <h3 className="text-md font-medium text-gray-800 mb-2">State Events</h3>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {project.stateEvents.length === 0 ? (
-                        <p className="text-gray-500 text-sm">
-                          State Eventsがありません。「状態」タブでキャプチャしてください。
-                        </p>
-                      ) : (
-                        project.stateEvents.map((stateEvent, index) => (
-                          <div
-                            key={stateEvent.id || index}
-                            className="p-2 border border-green-200 rounded bg-green-50 hover:bg-green-100 cursor-pointer"
-                            onClick={() => seekTo(stateEvent.time)}
-                            title="クリックでその時刻にジャンプ"
-                          >
-                            <div className="text-sm font-medium text-green-700">
-                              {stateEvent.time.toFixed(2)}s: State
-                            </div>
-                            <div className="text-xs text-green-600 mt-1">
-                              {stateEvent.description || "Captured state"}
-                            </div>
-                            <div className="text-xs text-green-500 mt-1">
-                              {stateEvent.state.expressions.length} expressions
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
+                <UnifiedEventEditPanel
+                  selectedEvent={selectedEvent ? getUnifiedEvent(selectedEvent.id || "") : null}
+                  onEventUpdate={updateUnifiedEvent}
+                  onEventDelete={() => {
+                    if (selectedEvent?.id) {
+                      removeEvent(selectedEvent.id);
+                      setSelectedEvent(null);
+                    }
+                  }}
+                  availableExpressions={project.initialState.expressions.list
+                    .filter((expr) => expr.id && expr.latex)
+                    .map((expr) => ({
+                      id: expr.id!,
+                      latex: expr.latex!,
+                      color: expr.color,
+                    }))}
+                  getCurrentExpressions={() =>
+                    calculator
+                      ? calculator.getExpressions().filter((expr) => expr.id && expr.latex)
+                      : []
+                  }
+                />
               )}
 
               {activeTab === "timeline" && (
@@ -600,7 +393,7 @@ function App() {
                         <div className="text-orange-600">
                           最大計算済み時刻: {getDebugInfo().maxCalculatedTime.toFixed(1)}秒
                         </div>
-                        <div>初期式数: {project.initialState.expressions.length}</div>
+                        <div>初期式数: {project.initialState.expressions.list.length}</div>
                       </div>
                     </div>
 
@@ -643,6 +436,8 @@ function App() {
         onPause={pause}
         onInsertEvent={(time, event) => insertEvent({ ...event, time })}
         onInsertState={(time) => captureCurrentState(`State at ${time.toFixed(1)}s`)}
+        onEventSelect={setSelectedEvent}
+        selectedEventId={selectedEvent?.id}
       />
     </div>
   );
