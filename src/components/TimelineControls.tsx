@@ -197,9 +197,9 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   const timeMarks = generateTimeMarks();
 
   return (
-    <div className="bg-gray-800 text-white border-t border-gray-700">
+    <div className="h-full flex flex-col bg-gray-800 text-white border-t border-gray-700">
       {/* コンパクトな再生コントロール */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-700">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-700 flex-shrink-0">
         <div className="flex items-center space-x-3">
           <button
             onClick={() => onSeek(0)}
@@ -235,7 +235,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
       </div>
 
       {/* メインタイムライン */}
-      <div className="px-6 py-4">
+      <div className="flex-1 min-h-0 overflow-auto px-6 py-4">
         <div className="relative bg-gray-900 rounded-lg p-4">
           {/* 時間軸の目盛り */}
           <div className="relative mb-4">
@@ -262,8 +262,12 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
 
           {/* 多層イベントトラック */}
           <div
-            className="relative"
-            style={{ height: `${Math.max(3, eventsWithTracks.trackCount) * 40 + 20}px` }}
+            className="relative min-h-[120px]"
+            style={{ 
+              height: eventsWithTracks.trackCount > 0 
+                ? `${Math.max(3, eventsWithTracks.trackCount) * 40 + 20}px` 
+                : '120px' 
+            }}
           >
             {/* メインのタイムライン軸（背景） */}
             <div

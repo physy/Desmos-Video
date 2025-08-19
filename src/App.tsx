@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { DesmosGraph } from "./components/DesmosGraph";
 import { TimelineControls } from "./components/TimelineControls";
 import { UnifiedEventEditPanel } from "./components/UnifiedEventEditPanel";
+import { ResizablePanel } from "./components/ResizablePanel";
 import { useTimeline } from "./hooks/useTimeline";
 import type { Calculator } from "./types/desmos";
 import type { TimelineEvent } from "./types/timeline";
@@ -137,42 +138,42 @@ function App() {
   const calculatedRegions = getDebugInfo().calculatedRegions;
 
   return (
-    <div className="h-screen flex flex-col bg-gray-100">
+    <div className="h-screen flex flex-col bg-gray-100 overflow-hidden">
       {/* ヘッダー */}
-      <header className="bg-white shadow-sm border-b border-gray-200 p-4">
+      <header className="bg-white shadow-sm border-b border-gray-200 p-3 flex-shrink-0">
         <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900">Desmos Animation Studio</h1>
+          <h1 className="text-xl font-bold text-gray-900">Desmos Animation Studio</h1>
           <div className="space-x-2">
             <button
               onClick={addDemoEvents}
-              className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+              className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
             >
               デモイベント追加
             </button>
             <button
               onClick={handleCaptureState}
-              className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700"
+              className="px-2 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700"
               title="現在のstateをキャプチャ"
             >
               Stateキャプチャ
             </button>
             <button
               onClick={handleCreateCheckpoint}
-              className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
+              className="px-2 py-1 bg-purple-600 text-white text-xs rounded hover:bg-purple-700"
               title="現在時刻でチェックポイント作成"
             >
               チェックポイント
             </button>
             <button
               onClick={updateInitialState}
-              className="px-3 py-1.5 bg-orange-600 text-white text-sm rounded hover:bg-orange-700"
+              className="px-2 py-1 bg-orange-600 text-white text-xs rounded hover:bg-orange-700"
               title="現在のstateを初期stateに設定"
             >
               初期state更新
             </button>
             <button
               onClick={clearCache}
-              className="px-3 py-1.5 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+              className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
               title="キャッシュクリア"
             >
               キャッシュクリア
@@ -181,7 +182,7 @@ function App() {
               <>
                 <button
                   onClick={handleShowDebugInfo}
-                  className="px-3 py-1.5 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
+                  className="px-2 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700"
                   title="デバッグ情報表示"
                 >
                   Debug
@@ -212,233 +213,266 @@ function App() {
                       console.error("Error during state comparison:", e);
                     }
                   }}
-                  className="px-3 py-1.5 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700"
+                  className="px-2 py-1 bg-yellow-600 text-white text-xs rounded hover:bg-yellow-700"
                   title="2sイベント問題をデバッグ"
                 >
                   2s Debug
                 </button>
               </>
             )}
-            <button className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700">
+            <button className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">
               エクスポート
             </button>
           </div>
         </div>
       </header>
 
-      {/* メインコンテンツ */}
-      <div className="flex-1 flex">
-        {/* Desmosグラフ */}
-        <div className="flex-1 p-4">
-          <div className="h-full bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            <DesmosGraph
-              onCalculatorReady={handleCalculatorReady}
-              options={{
-                keypad: false,
-                expressions: true,
-                settingsMenu: true,
-                zoomButtons: true,
-                mathBounds: {
-                  left: -10,
-                  right: 10,
-                  top: 10,
-                  bottom: -10,
-                },
-              }}
-            />
-          </div>
-        </div>
+      {/* メインコンテンツエリア - 縦分割 */}
+      <div className="flex-1 min-h-0">
+        <ResizablePanel
+          direction="vertical"
+          initialSizes={[70, 30]}
+          minSizes={[40, 20]}
+          maxSizes={[85, 60]}
+          className="h-full"
+        >
+          {/* 上部: グラフとサイドパネル */}
+          <div className="h-full">
+            <ResizablePanel
+              direction="horizontal"
+              initialSizes={[70, 30]}
+              minSizes={[50, 25]}
+              maxSizes={[80, 50]}
+              className="h-full"
+            >
+              {/* Desmosグラフ */}
+              <div className="h-full">
+                <div className="h-full bg-white border border-gray-200 overflow-hidden">
+                  <DesmosGraph
+                    onCalculatorReady={handleCalculatorReady}
+                    options={{
+                      keypad: false,
+                      expressions: true,
+                      settingsMenu: true,
+                      zoomButtons: true,
+                      mathBounds: {
+                        left: -10,
+                        right: 10,
+                        top: 10,
+                        bottom: -10,
+                      },
+                    }}
+                  />
+                </div>
+              </div>
 
-        {/* サイドパネル - タブ形式 */}
-        <div className="w-80 p-4">
-          <div className="h-full bg-white rounded-lg shadow-sm border border-gray-200">
-            {/* タブヘッダー */}
-            <div className="flex border-b border-gray-200">
-              <button
-                onClick={() => setActiveTab("state")}
-                className={`flex-1 px-4 py-3 text-sm font-medium ${
-                  activeTab === "state"
-                    ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                状態
-              </button>
-              <button
-                onClick={() => setActiveTab("events")}
-                className={`flex-1 px-4 py-3 text-sm font-medium ${
-                  activeTab === "events"
-                    ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                イベント
-              </button>
-              <button
-                onClick={() => setActiveTab("timeline")}
-                className={`flex-1 px-4 py-3 text-sm font-medium ${
-                  activeTab === "timeline"
-                    ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                タイムライン
-              </button>
-            </div>
+              {/* サイドパネル - タブ形式 */}
+              <div className="h-full">
+                <div className="h-full bg-white  border border-gray-200 flex flex-col">
+                  {/* タブヘッダー */}
+                  <div className="flex border-b border-gray-200 flex-shrink-0">
+                    <button
+                      onClick={() => setActiveTab("state")}
+                      className={`flex-1 px-3 py-2 text-xs font-medium ${
+                        activeTab === "state"
+                          ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      状態
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("events")}
+                      className={`flex-1 px-3 py-2 text-xs font-medium ${
+                        activeTab === "events"
+                          ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      イベント
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("timeline")}
+                      className={`flex-1 px-3 py-2 text-xs font-medium ${
+                        activeTab === "timeline"
+                          ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      タイムライン
+                    </button>
+                  </div>
 
-            {/* タブコンテンツ */}
-            <div className="p-4 h-full overflow-auto">
-              {activeTab === "state" && (
-                <div>
-                  <h2 className="text-lg font-semibold mb-4">
-                    現在の状態 ({currentTime.toFixed(3)}s)
-                  </h2>
+                  {/* タブコンテンツ */}
+                  <div className="p-3 flex-1 overflow-auto min-h-0">
+                    {activeTab === "state" && (
+                      <div className="h-full">
+                        <h2 className="text-sm font-semibold mb-3">
+                          現在の状態 ({currentTime.toFixed(3)}s)
+                        </h2>
 
-                  {calculator && (
-                    <div className="space-y-4">
-                      {/* 状態のJSON表示 */}
-                      <div>
-                        <h3 className="text-md font-medium text-gray-800 mb-2">完全な状態</h3>
-                        <div className="bg-gray-50 border rounded p-3 text-xs font-mono overflow-auto max-h-60">
-                          <pre>
-                            {JSON.stringify(
-                              {
-                                expressions: calculator.getExpressions(),
-                                bounds: calculator.graphpaperBounds?.mathCoordinates,
-                                viewport: calculator.graphpaperBounds?.pixelCoordinates,
-                              },
-                              null,
-                              2
-                            )}
-                          </pre>
-                        </div>
-                      </div>
-
-                      {/* 現在の式 */}
-                      <div>
-                        <h3 className="text-md font-medium text-gray-800 mb-2">式一覧</h3>
-                        <div className="space-y-2 max-h-40 overflow-y-auto">
-                          {calculator.getExpressions().map((expr, index) => (
-                            <div
-                              key={expr.id || index}
-                              className={`p-2 border rounded text-sm ${
-                                expr.hidden
-                                  ? "border-gray-300 bg-gray-50 text-gray-500"
-                                  : "border-green-200 bg-green-50 text-green-700"
-                              }`}
-                            >
-                              <div className="font-mono">{expr.latex}</div>
-                              <div className="text-xs mt-1">
-                                ID: {expr.id} | {expr.hidden ? "非表示" : "表示中"}
-                                {expr.color && ` | ${expr.color}`}
+                        {calculator && (
+                          <div className="space-y-3 h-full">
+                            {/* 状態のJSON表示 */}
+                            <div>
+                              <h3 className="text-xs font-medium text-gray-800 mb-2">完全な状態</h3>
+                              <div className="bg-gray-50 border rounded p-2 text-xs font-mono overflow-auto max-h-32">
+                                <pre>
+                                  {JSON.stringify(
+                                    {
+                                      expressions: calculator.getExpressions(),
+                                      bounds: calculator.graphpaperBounds?.mathCoordinates,
+                                      viewport: calculator.graphpaperBounds?.pixelCoordinates,
+                                    },
+                                    null,
+                                    2
+                                  )}
+                                </pre>
                               </div>
                             </div>
-                          ))}
+
+                            {/* 現在の式 */}
+                            <div>
+                              <h3 className="text-xs font-medium text-gray-800 mb-2">式一覧</h3>
+                              <div className="space-y-2 max-h-32 overflow-y-auto">
+                                {calculator.getExpressions().map((expr, index) => (
+                                  <div
+                                    key={expr.id || index}
+                                    className={`p-2 border rounded text-xs ${
+                                      expr.hidden
+                                        ? "border-gray-300 bg-gray-50 text-gray-500"
+                                        : "border-green-200 bg-green-50 text-green-700"
+                                    }`}
+                                  >
+                                    <div className="font-mono text-xs">{expr.latex}</div>
+                                    <div className="text-xs mt-1">
+                                      ID: {expr.id} | {expr.hidden ? "非表示" : "表示中"}
+                                      {expr.color && ` | ${expr.color}`}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Stateキャプチャボタン */}
+                            <button
+                              onClick={() =>
+                                captureCurrentState(`Manual capture at ${currentTime.toFixed(1)}s`)
+                              }
+                              className="w-full px-3 py-2 bg-green-500 text-white text-xs rounded hover:bg-green-600"
+                            >
+                              現在の状態をキャプチャ
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {activeTab === "events" && (
+                      <div className="h-full">
+                        <UnifiedEventEditPanel
+                          selectedEvent={
+                            selectedEvent ? getUnifiedEvent(selectedEvent.id || "") : null
+                          }
+                          onEventUpdate={updateUnifiedEvent}
+                          onEventDelete={() => {
+                            if (selectedEvent?.id) {
+                              removeEvent(selectedEvent.id);
+                              setSelectedEvent(null);
+                            }
+                          }}
+                          availableExpressions={project.initialState.expressions.list
+                            .filter((expr) => expr.id && expr.latex)
+                            .map((expr) => ({
+                              id: expr.id!,
+                              latex: expr.latex!,
+                              color: expr.color,
+                            }))}
+                          getCurrentExpressions={() =>
+                            calculator
+                              ? calculator.getExpressions().filter((expr) => expr.id && expr.latex)
+                              : []
+                          }
+                        />
+                      </div>
+                    )}
+
+                    {activeTab === "timeline" && (
+                      <div className="h-full">
+                        <h2 className="text-sm font-semibold mb-3">タイムライン詳細</h2>
+
+                        <div className="space-y-3">
+                          <div className="p-2 bg-gray-50 rounded">
+                            <h3 className="text-xs font-medium text-gray-700 mb-2">
+                              プロジェクト情報
+                            </h3>
+                            <div className="text-xs text-gray-500 space-y-1">
+                              <div>総時間: {project.duration}秒</div>
+                              <div>Timeline Events: {project.timeline.length}</div>
+                              <div className="text-green-600">
+                                State Events: {project.stateEvents.length}
+                              </div>
+                              <div>現在時刻: {currentTime.toFixed(3)}秒</div>
+                              <div className="text-orange-600">
+                                最大計算済み時刻: {getDebugInfo().maxCalculatedTime.toFixed(1)}秒
+                              </div>
+                              <div>初期式数: {project.initialState.expressions.list.length}</div>
+                            </div>
+                          </div>
+
+                          <div className="p-2 bg-blue-50 rounded">
+                            <h3 className="text-xs font-medium text-blue-700 mb-2">計算システム</h3>
+                            <div className="text-xs text-blue-600 space-y-1">
+                              <div>
+                                計算済み領域: {getDebugInfo().cacheInfo.calculatedRegions}個
+                              </div>
+                              <div>
+                                イベントキャッシュ: {getDebugInfo().cacheInfo.eventCacheSize}個
+                              </div>
+                              <div>重要時刻数: {getDebugInfo().criticalTimes.length}個</div>
+                            </div>
+                          </div>
+
+                          <div className="p-2 bg-green-50 rounded">
+                            <h3 className="text-xs font-medium text-green-700 mb-2">使用方法</h3>
+                            <div className="text-xs text-green-600 space-y-1">
+                              <div>• タイムライン上でダブルクリックでイベント挿入</div>
+                              <div>• イベントをドラッグして時刻変更（予定）</div>
+                              <div>• 変数アニメーションで時間軸での値変化</div>
+                              <div>• プロパティ変更でExpressionの外観変更</div>
+                            </div>
+                          </div>
                         </div>
                       </div>
-
-                      {/* Stateキャプチャボタン */}
-                      <button
-                        onClick={() =>
-                          captureCurrentState(`Manual capture at ${currentTime.toFixed(1)}s`)
-                        }
-                        className="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-                      >
-                        現在の状態をキャプチャ
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === "events" && (
-                <UnifiedEventEditPanel
-                  selectedEvent={selectedEvent ? getUnifiedEvent(selectedEvent.id || "") : null}
-                  onEventUpdate={updateUnifiedEvent}
-                  onEventDelete={() => {
-                    if (selectedEvent?.id) {
-                      removeEvent(selectedEvent.id);
-                      setSelectedEvent(null);
-                    }
-                  }}
-                  availableExpressions={project.initialState.expressions.list
-                    .filter((expr) => expr.id && expr.latex)
-                    .map((expr) => ({
-                      id: expr.id!,
-                      latex: expr.latex!,
-                      color: expr.color,
-                    }))}
-                  getCurrentExpressions={() =>
-                    calculator
-                      ? calculator.getExpressions().filter((expr) => expr.id && expr.latex)
-                      : []
-                  }
-                />
-              )}
-
-              {activeTab === "timeline" && (
-                <div>
-                  <h2 className="text-lg font-semibold mb-4">タイムライン詳細</h2>
-
-                  <div className="space-y-4">
-                    <div className="p-3 bg-gray-50 rounded">
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">プロジェクト情報</h3>
-                      <div className="text-xs text-gray-500 space-y-1">
-                        <div>総時間: {project.duration}秒</div>
-                        <div>Timeline Events: {project.timeline.length}</div>
-                        <div className="text-green-600">
-                          State Events: {project.stateEvents.length}
-                        </div>
-                        <div>現在時刻: {currentTime.toFixed(3)}秒</div>
-                        <div className="text-orange-600">
-                          最大計算済み時刻: {getDebugInfo().maxCalculatedTime.toFixed(1)}秒
-                        </div>
-                        <div>初期式数: {project.initialState.expressions.list.length}</div>
-                      </div>
-                    </div>
-
-                    <div className="p-3 bg-blue-50 rounded">
-                      <h3 className="text-sm font-medium text-blue-700 mb-2">計算システム</h3>
-                      <div className="text-xs text-blue-600 space-y-1">
-                        <div>計算済み領域: {getDebugInfo().cacheInfo.calculatedRegions}個</div>
-                        <div>イベントキャッシュ: {getDebugInfo().cacheInfo.eventCacheSize}個</div>
-                        <div>重要時刻数: {getDebugInfo().criticalTimes.length}個</div>
-                      </div>
-                    </div>
-
-                    <div className="p-3 bg-green-50 rounded">
-                      <h3 className="text-sm font-medium text-green-700 mb-2">使用方法</h3>
-                      <div className="text-xs text-green-600 space-y-1">
-                        <div>• タイムライン上でダブルクリックでイベント挿入</div>
-                        <div>• イベントをドラッグして時刻変更（予定）</div>
-                        <div>• 変数アニメーションで時間軸での値変化</div>
-                        <div>• プロパティ変更でExpressionの外観変更</div>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
-              )}
+              </div>
+            </ResizablePanel>
+          </div>
+
+          {/* 下部: タイムラインコントロール */}
+          <div className="h-full bg-white border-t border-gray-200 flex flex-col">
+            <div className="flex-1 min-h-0">
+              <TimelineControls
+                currentTime={currentTime}
+                duration={project.duration}
+                isPlaying={isPlaying}
+                timeline={project.timeline}
+                stateEvents={project.stateEvents}
+                calculatedRegions={calculatedRegions}
+                onSeek={seekTo}
+                onPlay={play}
+                onPause={pause}
+                onInsertEvent={(time, event) => insertEvent({ ...event, time })}
+                onInsertState={(time) => captureCurrentState(`State at ${time.toFixed(1)}s`)}
+                onEventSelect={setSelectedEvent}
+                selectedEventId={selectedEvent?.id}
+              />
             </div>
           </div>
-        </div>
+        </ResizablePanel>
       </div>
-
-      {/* タイムラインコントロール */}
-      <TimelineControls
-        currentTime={currentTime}
-        duration={project.duration}
-        isPlaying={isPlaying}
-        timeline={project.timeline}
-        stateEvents={project.stateEvents}
-        calculatedRegions={calculatedRegions}
-        onSeek={seekTo}
-        onPlay={play}
-        onPause={pause}
-        onInsertEvent={(time, event) => insertEvent({ ...event, time })}
-        onInsertState={(time) => captureCurrentState(`State at ${time.toFixed(1)}s`)}
-        onEventSelect={setSelectedEvent}
-        selectedEventId={selectedEvent?.id}
-      />
     </div>
   );
 }
