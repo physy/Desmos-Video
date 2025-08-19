@@ -5,12 +5,14 @@ interface DesmosGraphProps {
   options?: GraphingCalculatorOptions;
   onCalculatorReady?: (calculator: Calculator) => void;
   className?: string;
+  aspectRatio?: number; // 縦横比 (width/height) デフォルト: 16/9
 }
 
 export const DesmosGraph: React.FC<DesmosGraphProps> = ({
   options = {},
   onCalculatorReady,
   className = "w-full h-full",
+  aspectRatio = 16 / 9, // フルHDのアスペクト比をデフォルトに
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const calculatorRef = useRef<Calculator | null>(null);
@@ -34,8 +36,9 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
       const defaultOptions: GraphingCalculatorOptions = {
         keypad: false,
         expressions: true,
-        settingsMenu: true,
-        zoomButtons: true,
+        expressionsCollapsed: true,
+        settingsMenu: false,
+        zoomButtons: false,
         expressionsTopbar: true,
         pointsOfInterest: false,
         trace: false,
@@ -104,11 +107,40 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
     };
   }, []); // 依存関係を空の配列にして一度だけ実行
 
+  // アスペクト比が変更されたときにリサイズ
+  useEffect(() => {
+    console.log("DesmosGraph: aspectRatio changed to", aspectRatio);
+    if (calculatorRef.current) {
+      setTimeout(() => {
+        try {
+          calculatorRef.current?.resize();
+          console.log("DesmosGraph: Calculator resized for aspect ratio", aspectRatio);
+        } catch (error) {
+          console.error("Error resizing calculator:", error);
+        }
+      }, 100);
+    }
+  }, [aspectRatio]);
+
   return (
-    <div className={className}>
-      <div ref={containerRef} className="w-full h-full" style={{ minHeight: "400px" }} />
+    <div className={`${className} relative flex items-center justify-center overflow-hidden`}>
+      {/* 常にアスペクト比を適用：object-fit:containのような挙動 */}
+      <div className="flex items-center justify-center w-full h-full bg-gray-100">
+        <div
+          ref={containerRef}
+          style={{
+            aspectRatio: aspectRatio.toString(),
+            width: aspectRatio > 1 ? "100%" : "auto", // 横長なら幅100%
+            height: aspectRatio <= 1 ? "100%" : "auto", // 縦長なら高さ100%
+            maxWidth: "100%",
+            maxHeight: "100%",
+            minHeight: "200px",
+            minWidth: "200px",
+          }}
+        />
+      </div>
       {!isLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
           <div className="text-gray-600">Loading Desmos Calculator...</div>
         </div>
       )}

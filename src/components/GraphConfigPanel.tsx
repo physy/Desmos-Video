@@ -37,19 +37,19 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
   const handleConfigChange = (key: keyof GraphingCalculatorOptions, value: unknown) => {
     const newConfig = { ...config, [key]: value };
     setConfig(newConfig);
-    
+
     // 設定をすぐに適用
     if (calculator) {
       calculator.updateSettings({ [key]: value });
     }
-    
+
     onConfigUpdate?.(newConfig);
   };
 
   const handleMathBoundsChange = (key: keyof MathBounds, value: number) => {
     const newBounds = { ...mathBounds, [key]: value };
     setMathBounds(newBounds);
-    
+
     // 数値の検証
     if (newBounds.left < newBounds.right && newBounds.bottom < newBounds.top) {
       if (calculator) {
@@ -96,7 +96,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
       {/* 表示範囲設定 */}
       <div className="space-y-3">
         <h3 className="text-sm font-medium text-gray-700 border-b pb-1">表示範囲</h3>
-        
+
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Left (X最小)</label>
@@ -139,7 +139,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
             />
           </div>
         </div>
-        
+
         <div className="flex space-x-2">
           <button
             onClick={resetToDefault}
@@ -159,7 +159,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
       {/* グリッドと軸の表示設定 */}
       <div className="space-y-3">
         <h3 className="text-sm font-medium text-gray-700 border-b pb-1">表示オプション</h3>
-        
+
         <div className="space-y-2">
           <label className="flex items-center">
             <input
@@ -170,7 +170,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
             />
             <span className="text-sm">グリッド表示</span>
           </label>
-          
+
           <label className="flex items-center">
             <input
               type="checkbox"
@@ -180,7 +180,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
             />
             <span className="text-sm">X軸表示</span>
           </label>
-          
+
           <label className="flex items-center">
             <input
               type="checkbox"
@@ -190,7 +190,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
             />
             <span className="text-sm">Y軸表示</span>
           </label>
-          
+
           <label className="flex items-center">
             <input
               type="checkbox"
@@ -200,7 +200,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
             />
             <span className="text-sm">X軸数値表示</span>
           </label>
-          
+
           <label className="flex items-center">
             <input
               type="checkbox"
@@ -216,7 +216,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
       {/* 軸設定 */}
       <div className="space-y-3">
         <h3 className="text-sm font-medium text-gray-700 border-b pb-1">軸設定</h3>
-        
+
         <div className="space-y-2">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">X軸ラベル</label>
@@ -228,7 +228,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
-          
+
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Y軸ラベル</label>
             <input
@@ -239,7 +239,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
-          
+
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">X軸スケール</label>
             <select
@@ -251,7 +251,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
               <option value="logarithmic">対数</option>
             </select>
           </div>
-          
+
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Y軸スケール</label>
             <select
@@ -269,7 +269,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
       {/* その他の設定 */}
       <div className="space-y-3">
         <h3 className="text-sm font-medium text-gray-700 border-b pb-1">その他</h3>
-        
+
         <div className="space-y-2">
           <label className="flex items-center">
             <input
@@ -280,7 +280,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
             />
             <span className="text-sm">極座標モード</span>
           </label>
-          
+
           <label className="flex items-center">
             <input
               type="checkbox"
@@ -290,7 +290,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
             />
             <span className="text-sm">度数法モード</span>
           </label>
-          
+
           <label className="flex items-center">
             <input
               type="checkbox"
@@ -300,7 +300,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
             />
             <span className="text-sm">ビューポートロック</span>
           </label>
-          
+
           <label className="flex items-center">
             <input
               type="checkbox"
@@ -311,7 +311,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
             <span className="text-sm">プロジェクターモード</span>
           </label>
         </div>
-        
+
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">
             フォントサイズ: {config.fontSize || 16}px
@@ -330,7 +330,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
       {/* UI要素設定 */}
       <div className="space-y-3">
         <h3 className="text-sm font-medium text-gray-700 border-b pb-1">UI要素</h3>
-        
+
         <div className="space-y-2">
           <label className="flex items-center">
             <input
@@ -341,7 +341,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
             />
             <span className="text-sm">ズームボタン</span>
           </label>
-          
+
           <label className="flex items-center">
             <input
               type="checkbox"
@@ -351,7 +351,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
             />
             <span className="text-sm">トレース機能</span>
           </label>
-          
+
           <label className="flex items-center">
             <input
               type="checkbox"
@@ -361,7 +361,7 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
             />
             <span className="text-sm">注目点表示</span>
           </label>
-          
+
           <label className="flex items-center">
             <input
               type="checkbox"
@@ -380,7 +380,10 @@ export const GraphConfigPanel: React.FC<GraphConfigPanelProps> = ({
         <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
           <div>幅: {(mathBounds.right - mathBounds.left).toFixed(1)} 単位</div>
           <div>高さ: {(mathBounds.top - mathBounds.bottom).toFixed(1)} 単位</div>
-          <div>中心: ({((mathBounds.left + mathBounds.right) / 2).toFixed(1)}, {((mathBounds.top + mathBounds.bottom) / 2).toFixed(1)})</div>
+          <div>
+            中心: ({((mathBounds.left + mathBounds.right) / 2).toFixed(1)},{" "}
+            {((mathBounds.top + mathBounds.bottom) / 2).toFixed(1)})
+          </div>
         </div>
       </div>
     </div>

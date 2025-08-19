@@ -175,3 +175,46 @@ export interface StateManager {
   clearCache: () => void;
   applyStateToCalculator: (state: DesmosState, calculator: Calculator) => void;
 }
+
+// 動画エクスポート設定の型定義
+export interface VideoExportSettings {
+  // 基本設定
+  duration: number; // 秒
+  fps: number; // フレームレート
+
+  // 解像度設定
+  resolution: {
+    width: number;
+    height: number;
+    preset?: "custom" | "720p" | "1080p" | "1440p" | "4k" | "square" | "vertical";
+  };
+
+  // 品質設定
+  quality: {
+    bitrate?: number; // kbps
+    preset: "draft" | "standard" | "high" | "ultra";
+  };
+
+  // フォーマット設定
+  format: {
+    container: "mp4" | "webm" | "gif";
+    codec?: "h264" | "h265" | "vp8" | "vp9";
+  };
+
+  // 詳細設定
+  advanced: {
+    targetPixelRatio: number; // スクリーンショット用
+    backgroundColor?: string;
+    antialias: boolean;
+    motionBlur: boolean;
+    frameInterpolation: boolean;
+  };
+
+  // メタデータ
+  metadata: {
+    title?: string;
+    description?: string;
+    author?: string;
+    tags?: string[];
+  };
+}

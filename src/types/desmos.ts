@@ -183,6 +183,7 @@ export interface Calculator {
     callback?: (url: string) => void
   ) => void;
   destroy: () => void;
+  resize: () => void;
   observeEvent: (event: string, callback: (...args: unknown[]) => void) => void;
   unobserveEvent: (event: string, callback: (...args: unknown[]) => void) => void;
 }

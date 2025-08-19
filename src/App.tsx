@@ -1,12 +1,13 @@
-import { useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { DesmosGraph } from "./components/DesmosGraph";
 import { TimelineControls } from "./components/TimelineControls";
 import { UnifiedEventEditPanel } from "./components/UnifiedEventEditPanel";
 import { GraphConfigPanel } from "./components/GraphConfigPanel";
+import { VideoExportPanel } from "./components/VideoExportPanel";
 import { ResizablePanel } from "./components/ResizablePanel";
 import { useTimeline } from "./hooks/useTimeline";
 import type { Calculator } from "./types/desmos";
-import type { TimelineEvent } from "./types/timeline";
+import type { TimelineEvent, VideoExportSettings } from "./types/timeline";
 import "./App.css";
 
 // デバッグモードのフラグ（開発時に true にする）
@@ -14,8 +15,81 @@ const DEBUG_MODE = false;
 
 function App() {
   const [calculator, setCalculator] = useState<Calculator | null>(null);
-  const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline" | "graph">("events");
+  const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline" | "graph" | "export">(
+    "events"
+  );
   const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
+  const [videoSettings, setVideoSettings] = useState<VideoExportSettings | null>(null);
+  const [graphAspectRatio, setGraphAspectRatio] = useState<number>(16 / 9); // フルHDをデフォルト
+
+  // 動画解像度に基づいてグラフの縦横比を調整する関数
+  const adjustGraphAspectRatio = useCallback(
+    (settings: VideoExportSettings) => {
+      const { width, height } = settings.resolution;
+      const aspectRatio = width / height;
+
+      console.log("App: Adjusting graph aspect ratio", { width, height, aspectRatio });
+
+      // DOM要素のアスペクト比を設定
+      setGraphAspectRatio(aspectRatio);
+
+      // 数学的な境界も調整（calculator が利用可能な場合）
+      if (calculator) {
+        setTimeout(() => {
+          const currentBounds = calculator.graphpaperBounds?.mathCoordinates;
+          if (!currentBounds) return;
+
+          // 現在の中心点を保持
+          const centerX = (currentBounds.left + currentBounds.right) / 2;
+          const centerY = (currentBounds.top + currentBounds.bottom) / 2;
+
+          // 現在の範囲の大きさを取得
+          const currentWidth = currentBounds.right - currentBounds.left;
+          const currentHeight = currentBounds.top - currentBounds.bottom;
+
+          // 新しい範囲を計算（アスペクト比に合わせて調整）
+          let newWidth, newHeight;
+
+          if (aspectRatio > 1) {
+            // 横長（16:9など）
+            newHeight = currentHeight;
+            newWidth = newHeight * aspectRatio;
+          } else if (aspectRatio < 1) {
+            // 縦長（9:16など）
+            newWidth = currentWidth;
+            newHeight = newWidth / aspectRatio;
+          } else {
+            // 正方形（1:1）
+            const maxDimension = Math.max(currentWidth, currentHeight);
+            newWidth = maxDimension;
+            newHeight = maxDimension;
+          }
+
+          // 新しい境界を設定
+          const newBounds = {
+            left: centerX - newWidth / 2,
+            right: centerX + newWidth / 2,
+            top: centerY + newHeight / 2,
+            bottom: centerY - newHeight / 2,
+          };
+
+          console.log("App: Setting new math bounds", newBounds);
+          calculator.setMathBounds(newBounds);
+        }, 200); // Desmosのリサイズ処理を待つ
+      }
+    },
+    [calculator]
+  );
+
+  // 動画設定変更ハンドラー
+  const handleVideoSettingsChange = useCallback(
+    (settings: VideoExportSettings) => {
+      console.log("App: Video settings changed", settings);
+      setVideoSettings(settings);
+      adjustGraphAspectRatio(settings);
+    },
+    [adjustGraphAspectRatio]
+  );
 
   const {
     project,
@@ -248,21 +322,11 @@ function App() {
             >
               {/* Desmosグラフ */}
               <div className="h-full">
-                <div className="h-full bg-white border border-gray-200 overflow-hidden">
+                <div className="h-full bg-white border border-gray-200 overflow-hidden flex items-center justify-center">
                   <DesmosGraph
                     onCalculatorReady={handleCalculatorReady}
-                    options={{
-                      keypad: false,
-                      expressions: true,
-                      settingsMenu: true,
-                      zoomButtons: true,
-                      mathBounds: {
-                        left: -10,
-                        right: 10,
-                        top: 10,
-                        bottom: -10,
-                      },
-                    }}
+                    aspectRatio={graphAspectRatio}
+                    className="w-full h-full"
                   />
                 </div>
               </div>
@@ -274,7 +338,7 @@ function App() {
                   <div className="flex border-b border-gray-200 flex-shrink-0">
                     <button
                       onClick={() => setActiveTab("state")}
-                      className={`flex-1 px-3 py-2 text-xs font-medium ${
+                      className={`flex-1 px-2 py-2 text-xs font-medium ${
                         activeTab === "state"
                           ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
                           : "text-gray-500 hover:text-gray-700"
@@ -284,7 +348,7 @@ function App() {
                     </button>
                     <button
                       onClick={() => setActiveTab("events")}
-                      className={`flex-1 px-3 py-2 text-xs font-medium ${
+                      className={`flex-1 px-2 py-2 text-xs font-medium ${
                         activeTab === "events"
                           ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
                           : "text-gray-500 hover:text-gray-700"
@@ -294,7 +358,7 @@ function App() {
                     </button>
                     <button
                       onClick={() => setActiveTab("graph")}
-                      className={`flex-1 px-3 py-2 text-xs font-medium ${
+                      className={`flex-1 px-2 py-2 text-xs font-medium ${
                         activeTab === "graph"
                           ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
                           : "text-gray-500 hover:text-gray-700"
@@ -303,8 +367,18 @@ function App() {
                       グラフ
                     </button>
                     <button
+                      onClick={() => setActiveTab("export")}
+                      className={`flex-1 px-2 py-2 text-xs font-medium ${
+                        activeTab === "export"
+                          ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      エクスポート
+                    </button>
+                    <button
                       onClick={() => setActiveTab("timeline")}
-                      className={`flex-1 px-3 py-2 text-xs font-medium ${
+                      className={`flex-1 px-2 py-2 text-xs font-medium ${
                         activeTab === "timeline"
                           ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
                           : "text-gray-500 hover:text-gray-700"
@@ -410,10 +484,27 @@ function App() {
 
                     {activeTab === "graph" && (
                       <div className="h-full">
-                        <GraphConfigPanel 
+                        <GraphConfigPanel
                           calculator={calculator}
                           onConfigUpdate={(config) => {
                             console.log("Graph config updated:", config);
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {activeTab === "export" && (
+                      <div className="h-full">
+                        <VideoExportPanel
+                          videoSettings={videoSettings}
+                          onVideoSettingsChange={handleVideoSettingsChange}
+                          currentDuration={project.duration}
+                          onSettingsChange={(settings) => {
+                            console.log("Video export settings updated:", settings);
+                          }}
+                          onExportStart={(settings) => {
+                            console.log("Starting video export with settings:", settings);
+                            // TODO: 実際のエクスポート処理を実装
                           }}
                         />
                       </div>
