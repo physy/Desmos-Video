@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { DesmosGraph } from "./components/DesmosGraph";
 import { TimelineControls } from "./components/TimelineControls";
 import { UnifiedEventEditPanel } from "./components/UnifiedEventEditPanel";
+import { GraphConfigPanel } from "./components/GraphConfigPanel";
 import { ResizablePanel } from "./components/ResizablePanel";
 import { useTimeline } from "./hooks/useTimeline";
 import type { Calculator } from "./types/desmos";
@@ -13,7 +14,7 @@ const DEBUG_MODE = false;
 
 function App() {
   const [calculator, setCalculator] = useState<Calculator | null>(null);
-  const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline">("events");
+  const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline" | "graph">("events");
   const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
 
   const {
@@ -292,6 +293,16 @@ function App() {
                       イベント
                     </button>
                     <button
+                      onClick={() => setActiveTab("graph")}
+                      className={`flex-1 px-3 py-2 text-xs font-medium ${
+                        activeTab === "graph"
+                          ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      グラフ
+                    </button>
+                    <button
                       onClick={() => setActiveTab("timeline")}
                       className={`flex-1 px-3 py-2 text-xs font-medium ${
                         activeTab === "timeline"
@@ -393,6 +404,17 @@ function App() {
                               ? calculator.getExpressions().filter((expr) => expr.id && expr.latex)
                               : []
                           }
+                        />
+                      </div>
+                    )}
+
+                    {activeTab === "graph" && (
+                      <div className="h-full">
+                        <GraphConfigPanel 
+                          calculator={calculator}
+                          onConfigUpdate={(config) => {
+                            console.log("Graph config updated:", config);
+                          }}
                         />
                       </div>
                     )}
