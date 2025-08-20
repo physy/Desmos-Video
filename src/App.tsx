@@ -357,7 +357,7 @@ function App() {
                           : "text-gray-500 hover:text-gray-700"
                       }`}
                     >
-                      状態
+                      State
                     </button>
                     <button
                       onClick={() => setActiveTab("events")}
@@ -367,7 +367,7 @@ function App() {
                           : "text-gray-500 hover:text-gray-700"
                       }`}
                     >
-                      イベント
+                      Event
                     </button>
                     <button
                       onClick={() => setActiveTab("graph")}
@@ -377,7 +377,7 @@ function App() {
                           : "text-gray-500 hover:text-gray-700"
                       }`}
                     >
-                      グラフ
+                      Graph
                     </button>
                     <button
                       onClick={() => setActiveTab("export")}
@@ -387,7 +387,7 @@ function App() {
                           : "text-gray-500 hover:text-gray-700"
                       }`}
                     >
-                      エクスポート
+                      Export
                     </button>
                     <button
                       onClick={() => setActiveTab("timeline")}
@@ -397,24 +397,28 @@ function App() {
                           : "text-gray-500 hover:text-gray-700"
                       }`}
                     >
-                      タイムライン
+                      Timeline
                     </button>
                   </div>
 
                   {/* タブコンテンツ */}
-                  <div className="p-3 flex-1 overflow-auto min-h-0">
+                  <div className="p-3 flex-1 overflow-auto min-h-0 relative">
                     {activeTab === "state" && (
                       <div className="h-full">
-                        <h2 className="text-sm font-semibold mb-3">
-                          現在の状態 ({currentTime.toFixed(3)}s)
-                        </h2>
-
                         {calculator && (
                           <div className="space-y-3 h-full">
+                            {/* Stateキャプチャボタン */}
+                            <button
+                              onClick={() =>
+                                captureCurrentState(`Manual capture at ${currentTime.toFixed(1)}s`)
+                              }
+                              className="sticky t-0 w-full px-3 py-2 bg-green-500 text-white text-xs rounded hover:bg-green-600"
+                            >
+                              現在の State をキャプチャ
+                            </button>
                             {/* 状態のJSON表示 */}
-                            <div>
-                              <h3 className="text-xs font-medium text-gray-800 mb-2">完全な状態</h3>
-                              <div className="bg-gray-50 border rounded p-2 text-xs font-mono overflow-auto max-h-32">
+                            <div className="">
+                              <div className=" bg-gray-50 border rounded p-2 text-xs font-mono overflow-auto">
                                 <pre>
                                   {JSON.stringify(
                                     {
@@ -428,39 +432,6 @@ function App() {
                                 </pre>
                               </div>
                             </div>
-
-                            {/* 現在の式 */}
-                            <div>
-                              <h3 className="text-xs font-medium text-gray-800 mb-2">式一覧</h3>
-                              <div className="space-y-2 max-h-32 overflow-y-auto">
-                                {calculator.getExpressions().map((expr, index) => (
-                                  <div
-                                    key={expr.id || index}
-                                    className={`p-2 border rounded text-xs ${
-                                      expr.hidden
-                                        ? "border-gray-300 bg-gray-50 text-gray-500"
-                                        : "border-green-200 bg-green-50 text-green-700"
-                                    }`}
-                                  >
-                                    <div className="font-mono text-xs">{expr.latex}</div>
-                                    <div className="text-xs mt-1">
-                                      ID: {expr.id} | {expr.hidden ? "非表示" : "表示中"}
-                                      {expr.color && ` | ${expr.color}`}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Stateキャプチャボタン */}
-                            <button
-                              onClick={() =>
-                                captureCurrentState(`Manual capture at ${currentTime.toFixed(1)}s`)
-                              }
-                              className="w-full px-3 py-2 bg-green-500 text-white text-xs rounded hover:bg-green-600"
-                            >
-                              現在の状態をキャプチャ
-                            </button>
                           </div>
                         )}
                       </div>

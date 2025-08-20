@@ -271,7 +271,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   return (
     <div className="h-full flex flex-col bg-gray-800 text-white border-t border-gray-700">
       {/* コンパクトな再生コントロール */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-700 flex-shrink-0">
+      <div className="flex items-center justify-between px-6 py-1 border-b border-gray-700 flex-shrink-0">
         <div className="flex items-center space-x-3">
           <button
             onClick={() => onSeek(0)}
@@ -307,7 +307,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
       </div>
 
       {/* メインタイムライン */}
-      <div className="flex flex-col flex-1 min-h-0 px-6 py-4">
+      <div className="flex flex-col flex-1 min-h-0 px-4 py-2">
         <div className="flex-1 relative bg-gray-900 rounded-lg px-4 py-2 flex flex-col">
           {/* 時間軸の目盛り */}
           <div className="relative mb-4 flex-shrink-0">
