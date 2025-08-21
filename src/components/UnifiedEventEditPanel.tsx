@@ -1,29 +1,28 @@
 import React, { useState, useEffect } from "react";
 import type { UnifiedEvent } from "../types/timeline";
+import { DynamicPropertyEditor } from "./DynamicPropertyEditor";
+import { PROPERTY_CONFIGS } from "../utils/propertyConfigs";
+import { deepCopy } from "../utils/deepCopy";
 
 export interface UnifiedEventEditPanelProps {
   selectedEvent: UnifiedEvent | null;
   onEventUpdate: (event: UnifiedEvent) => void;
   onEventDelete: () => void;
-  availableExpressions: Array<{ id: string; latex: string; color?: string }>;
-  getCurrentExpressions?: () => Array<{ id: string; latex?: string; color?: string }>;
 }
 
 export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
   selectedEvent,
   onEventUpdate,
   onEventDelete,
-  availableExpressions,
-  getCurrentExpressions,
 }) => {
   const [editingEvent, setEditingEvent] = useState<UnifiedEvent | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
     setEditingEvent(selectedEvent);
+    setHasUnsavedChanges(false);
   }, [selectedEvent]);
-
-  // 現在の式を取得（リアルタイム更新のため）
-  const currentExpressions = getCurrentExpressions ? getCurrentExpressions() : availableExpressions;
 
   if (!editingEvent) {
     return (
@@ -38,13 +37,32 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
 
   const handleEventChange = (updates: Partial<UnifiedEvent>) => {
     if (!editingEvent) return;
-    const updatedEvent = { ...editingEvent, ...updates };
+
+    // 現在の編集中イベントをディープコピーしてから変更を適用
+    const updatedEvent = deepCopy(editingEvent);
+
+    // 変更を安全に適用
+    Object.assign(updatedEvent, updates);
+
     setEditingEvent(updatedEvent);
+    setHasUnsavedChanges(true);
   };
 
-  const handleSave = () => {
-    if (editingEvent) {
-      onEventUpdate(editingEvent);
+  const handleSave = async () => {
+    if (editingEvent && hasUnsavedChanges) {
+      setIsSaving(true);
+      try {
+        // 保存処理の実行
+        onEventUpdate(editingEvent);
+        setHasUnsavedChanges(false);
+
+        // 保存完了のフィードバックのために少し待機
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      } catch (error) {
+        console.error("保存エラー:", error);
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -53,321 +71,51 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
 
     return (
       <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">対象Expression ID</label>
-          <select
-            value={editingEvent.expressionId || ""}
-            onChange={(e) => handleEventChange({ expressionId: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            <option value="">選択してください</option>
-            {currentExpressions
-              .filter((expr) => expr.id && expr.latex)
-              .map((expr) => (
-                <option key={expr.id} value={expr.id}>
-                  {expr.id} - {expr.latex}
-                </option>
-              ))}
-          </select>
-        </div>
-
         <div className="space-y-3">
           <h3 className="text-sm font-medium text-gray-700">変更するプロパティ</h3>
 
-          <div className="space-y-2">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={editingEvent.properties?.latex !== undefined}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    handleEventChange({
-                      properties: {
-                        ...editingEvent.properties,
-                        latex: editingEvent.properties?.latex || "y = x",
-                      },
-                    });
-                  } else {
-                    const newProps = { ...editingEvent.properties };
-                    delete newProps.latex;
-                    handleEventChange({ properties: newProps });
-                  }
-                }}
-                className="mr-2"
-              />
-              <span className="text-sm">数式 (latex)</span>
-            </label>
-            {editingEvent.properties?.latex !== undefined && (
-              <input
-                type="text"
-                value={editingEvent.properties.latex as string}
-                onChange={(e) =>
-                  handleEventChange({
-                    properties: {
-                      ...editingEvent.properties,
-                      latex: e.target.value,
-                    },
-                  })
-                }
-                placeholder="y = x^2"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            )}
-          </div>
+          <DynamicPropertyEditor
+            properties={editingEvent.properties || {}}
+            onPropertyChange={(key, value) => {
+              // 現在のプロパティをディープコピーしてから変更
+              const currentProperties = deepCopy(editingEvent.properties || {}) as Record<
+                string,
+                unknown
+              >;
+              currentProperties[key] = value;
 
-          <div className="space-y-2">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={editingEvent.properties?.color !== undefined}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    handleEventChange({
-                      properties: {
-                        ...editingEvent.properties,
-                        color: editingEvent.properties?.color || "#2563eb",
-                      },
-                    });
-                  } else {
-                    const newProps = { ...editingEvent.properties };
-                    delete newProps.color;
-                    handleEventChange({ properties: newProps });
-                  }
-                }}
-                className="mr-2"
-              />
-              <span className="text-sm">色</span>
-            </label>
-            {editingEvent.properties?.color !== undefined && (
-              <input
-                type="color"
-                value={editingEvent.properties.color as string}
-                onChange={(e) =>
-                  handleEventChange({
-                    properties: {
-                      ...editingEvent.properties,
-                      color: e.target.value,
-                    },
-                  })
-                }
-                className="w-16 h-8 border border-gray-300 rounded"
-              />
-            )}
-          </div>
+              handleEventChange({
+                properties: currentProperties,
+              });
+            }}
+            onPropertyAdd={(key) => {
+              const config = PROPERTY_CONFIGS[key];
+              if (config) {
+                // 現在のプロパティをディープコピーしてから追加
+                const currentProperties = deepCopy(editingEvent.properties || {}) as Record<
+                  string,
+                  unknown
+                >;
+                currentProperties[key] = config.defaultValue;
 
-          <div className="space-y-2">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={editingEvent.properties?.hidden !== undefined}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    handleEventChange({
-                      properties: {
-                        ...editingEvent.properties,
-                        hidden: editingEvent.properties?.hidden || false,
-                      },
-                    });
-                  } else {
-                    const newProps = { ...editingEvent.properties };
-                    delete newProps.hidden;
-                    handleEventChange({ properties: newProps });
-                  }
-                }}
-                className="mr-2"
-              />
-              <span className="text-sm">表示/非表示</span>
-            </label>
-            {editingEvent.properties?.hidden !== undefined && (
-              <select
-                value={editingEvent.properties.hidden ? "true" : "false"}
-                onChange={(e) =>
-                  handleEventChange({
-                    properties: {
-                      ...editingEvent.properties,
-                      hidden: e.target.value === "true",
-                    },
-                  })
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="false">表示</option>
-                <option value="true">非表示</option>
-              </select>
-            )}
-          </div>
+                handleEventChange({
+                  properties: currentProperties,
+                });
+              }
+            }}
+            onPropertyRemove={(key) => {
+              // 現在のプロパティをディープコピーしてから削除
+              const currentProperties = deepCopy(editingEvent.properties || {}) as Record<
+                string,
+                unknown
+              >;
+              delete currentProperties[key];
 
-          <div className="space-y-2">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={editingEvent.properties?.lineStyle !== undefined}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    handleEventChange({
-                      properties: {
-                        ...editingEvent.properties,
-                        lineStyle: editingEvent.properties?.lineStyle || "SOLID",
-                      },
-                    });
-                  } else {
-                    const newProps = { ...editingEvent.properties };
-                    delete newProps.lineStyle;
-                    handleEventChange({ properties: newProps });
-                  }
-                }}
-                className="mr-2"
-              />
-              <span className="text-sm">線のスタイル</span>
-            </label>
-            {editingEvent.properties?.lineStyle !== undefined && (
-              <select
-                value={editingEvent.properties.lineStyle as string}
-                onChange={(e) =>
-                  handleEventChange({
-                    properties: {
-                      ...editingEvent.properties,
-                      lineStyle: e.target.value as "SOLID" | "DASHED" | "DOTTED",
-                    },
-                  })
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="SOLID">実線</option>
-                <option value="DASHED">破線</option>
-                <option value="DOTTED">点線</option>
-              </select>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={editingEvent.properties?.lineWidth !== undefined}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    handleEventChange({
-                      properties: {
-                        ...editingEvent.properties,
-                        lineWidth: editingEvent.properties?.lineWidth || 2.5,
-                      },
-                    });
-                  } else {
-                    const newProps = { ...editingEvent.properties };
-                    delete newProps.lineWidth;
-                    handleEventChange({ properties: newProps });
-                  }
-                }}
-                className="mr-2"
-              />
-              <span className="text-sm">線の太さ</span>
-            </label>
-            {editingEvent.properties?.lineWidth !== undefined && (
-              <input
-                type="number"
-                value={editingEvent.properties.lineWidth as number}
-                onChange={(e) =>
-                  handleEventChange({
-                    properties: {
-                      ...editingEvent.properties,
-                      lineWidth: parseFloat(e.target.value),
-                    },
-                  })
-                }
-                min="0.5"
-                max="10"
-                step="0.5"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={editingEvent.properties?.lineOpacity !== undefined}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    handleEventChange({
-                      properties: {
-                        ...editingEvent.properties,
-                        lineOpacity: editingEvent.properties?.lineOpacity || 0.9,
-                      },
-                    });
-                  } else {
-                    const newProps = { ...editingEvent.properties };
-                    delete newProps.lineOpacity;
-                    handleEventChange({ properties: newProps });
-                  }
-                }}
-                className="mr-2"
-              />
-              <span className="text-sm">線の透明度</span>
-            </label>
-            {editingEvent.properties?.lineOpacity !== undefined && (
-              <input
-                type="range"
-                value={editingEvent.properties.lineOpacity as number}
-                onChange={(e) =>
-                  handleEventChange({
-                    properties: {
-                      ...editingEvent.properties,
-                      lineOpacity: parseFloat(e.target.value),
-                    },
-                  })
-                }
-                min="0"
-                max="1"
-                step="0.1"
-                className="w-full"
-              />
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={editingEvent.properties?.fillOpacity !== undefined}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    handleEventChange({
-                      properties: {
-                        ...editingEvent.properties,
-                        fillOpacity: editingEvent.properties?.fillOpacity || 0.4,
-                      },
-                    });
-                  } else {
-                    const newProps = { ...editingEvent.properties };
-                    delete newProps.fillOpacity;
-                    handleEventChange({ properties: newProps });
-                  }
-                }}
-                className="mr-2"
-              />
-              <span className="text-sm">塗りつぶし透明度</span>
-            </label>
-            {editingEvent.properties?.fillOpacity !== undefined && (
-              <input
-                type="range"
-                value={editingEvent.properties.fillOpacity as number}
-                onChange={(e) =>
-                  handleEventChange({
-                    properties: {
-                      ...editingEvent.properties,
-                      fillOpacity: parseFloat(e.target.value),
-                    },
-                  })
-                }
-                min="0"
-                max="1"
-                step="0.1"
-                className="w-full"
-              />
-            )}
-          </div>
+              handleEventChange({
+                properties: currentProperties,
+              });
+            }}
+          />
         </div>
       </div>
     );
@@ -386,17 +134,21 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
             <input
               type="number"
               value={editingEvent.bounds?.left || -10}
-              onChange={(e) =>
+              onChange={(e) => {
+                const currentBounds = deepCopy(
+                  editingEvent.bounds || {
+                    left: -10,
+                    right: 10,
+                    top: 10,
+                    bottom: -10,
+                  }
+                );
+                currentBounds.left = parseFloat(e.target.value);
+
                 handleEventChange({
-                  bounds: {
-                    ...editingEvent.bounds,
-                    left: parseFloat(e.target.value),
-                    right: editingEvent.bounds?.right || 10,
-                    top: editingEvent.bounds?.top || 10,
-                    bottom: editingEvent.bounds?.bottom || -10,
-                  },
-                })
-              }
+                  bounds: currentBounds,
+                });
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -405,17 +157,21 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
             <input
               type="number"
               value={editingEvent.bounds?.right || 10}
-              onChange={(e) =>
+              onChange={(e) => {
+                const currentBounds = deepCopy(
+                  editingEvent.bounds || {
+                    left: -10,
+                    right: 10,
+                    top: 10,
+                    bottom: -10,
+                  }
+                );
+                currentBounds.right = parseFloat(e.target.value);
+
                 handleEventChange({
-                  bounds: {
-                    ...editingEvent.bounds,
-                    right: parseFloat(e.target.value),
-                    left: editingEvent.bounds?.left || -10,
-                    top: editingEvent.bounds?.top || 10,
-                    bottom: editingEvent.bounds?.bottom || -10,
-                  },
-                })
-              }
+                  bounds: currentBounds,
+                });
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -424,17 +180,21 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
             <input
               type="number"
               value={editingEvent.bounds?.top || 10}
-              onChange={(e) =>
+              onChange={(e) => {
+                const currentBounds = deepCopy(
+                  editingEvent.bounds || {
+                    left: -10,
+                    right: 10,
+                    top: 10,
+                    bottom: -10,
+                  }
+                );
+                currentBounds.top = parseFloat(e.target.value);
+
                 handleEventChange({
-                  bounds: {
-                    ...editingEvent.bounds,
-                    top: parseFloat(e.target.value),
-                    left: editingEvent.bounds?.left || -10,
-                    right: editingEvent.bounds?.right || 10,
-                    bottom: editingEvent.bounds?.bottom || -10,
-                  },
-                })
-              }
+                  bounds: currentBounds,
+                });
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -443,28 +203,27 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
             <input
               type="number"
               value={editingEvent.bounds?.bottom || -10}
-              onChange={(e) =>
+              onChange={(e) => {
+                const currentBounds = deepCopy(
+                  editingEvent.bounds || {
+                    left: -10,
+                    right: 10,
+                    top: 10,
+                    bottom: -10,
+                  }
+                );
+                currentBounds.bottom = parseFloat(e.target.value);
+
                 handleEventChange({
-                  bounds: {
-                    ...editingEvent.bounds,
-                    bottom: parseFloat(e.target.value),
-                    left: editingEvent.bounds?.left || -10,
-                    right: editingEvent.bounds?.right || 10,
-                    top: editingEvent.bounds?.top || 10,
-                  },
-                })
-              }
+                  bounds: currentBounds,
+                });
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
         </div>
       </div>
     );
-  };
-
-  const renderVariableEventEditor = () => {
-    // 変数設定はexpressionに統合されたため、このエディタは不要
-    return null;
   };
 
   const renderAnimationEventEditor = () => {
@@ -477,16 +236,21 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
           <input
             type="text"
             value={editingEvent.animation?.variable || ""}
-            onChange={(e) =>
+            onChange={(e) => {
+              const currentAnimation = deepCopy(
+                editingEvent.animation || {
+                  variable: "",
+                  startValue: 0,
+                  endValue: 1,
+                  duration: 1,
+                }
+              );
+              currentAnimation.variable = e.target.value;
+
               handleEventChange({
-                animation: {
-                  variable: e.target.value,
-                  startValue: editingEvent.animation?.startValue || 0,
-                  endValue: editingEvent.animation?.endValue || 1,
-                  duration: editingEvent.animation?.duration || 1,
-                },
-              })
-            }
+                animation: currentAnimation,
+              });
+            }}
             placeholder="t"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
@@ -497,16 +261,21 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
           <input
             type="number"
             value={editingEvent.animation?.startValue || 0}
-            onChange={(e) =>
+            onChange={(e) => {
+              const currentAnimation = deepCopy(
+                editingEvent.animation || {
+                  variable: "",
+                  startValue: 0,
+                  endValue: 1,
+                  duration: 1,
+                }
+              );
+              currentAnimation.startValue = parseFloat(e.target.value);
+
               handleEventChange({
-                animation: {
-                  variable: editingEvent.animation?.variable || "",
-                  startValue: parseFloat(e.target.value),
-                  endValue: editingEvent.animation?.endValue || 1,
-                  duration: editingEvent.animation?.duration || 1,
-                },
-              })
-            }
+                animation: currentAnimation,
+              });
+            }}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
@@ -516,16 +285,21 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
           <input
             type="number"
             value={editingEvent.animation?.endValue || 1}
-            onChange={(e) =>
+            onChange={(e) => {
+              const currentAnimation = deepCopy(
+                editingEvent.animation || {
+                  variable: "",
+                  startValue: 0,
+                  endValue: 1,
+                  duration: 1,
+                }
+              );
+              currentAnimation.endValue = parseFloat(e.target.value);
+
               handleEventChange({
-                animation: {
-                  variable: editingEvent.animation?.variable || "",
-                  startValue: editingEvent.animation?.startValue || 0,
-                  endValue: parseFloat(e.target.value),
-                  duration: editingEvent.animation?.duration || 1,
-                },
-              })
-            }
+                animation: currentAnimation,
+              });
+            }}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
@@ -537,16 +311,21 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
           <input
             type="number"
             value={editingEvent.animation?.duration || 1}
-            onChange={(e) =>
+            onChange={(e) => {
+              const currentAnimation = deepCopy(
+                editingEvent.animation || {
+                  variable: "",
+                  startValue: 0,
+                  endValue: 1,
+                  duration: 1,
+                }
+              );
+              currentAnimation.duration = parseFloat(e.target.value);
+
               handleEventChange({
-                animation: {
-                  variable: editingEvent.animation?.variable || "",
-                  startValue: editingEvent.animation?.startValue || 0,
-                  endValue: editingEvent.animation?.endValue || 1,
-                  duration: parseFloat(e.target.value),
-                },
-              })
-            }
+                animation: currentAnimation,
+              });
+            }}
             step="0.1"
             min="0.1"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -589,7 +368,6 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                 type: e.target.value as UnifiedEvent["type"],
                 // タイプ変更時は関連プロパティをリセット
                 ...(e.target.value === "expression" && {
-                  expressionId: "",
                   properties: {},
                   bounds: undefined,
                   animation: undefined,
@@ -618,17 +396,81 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
 
         {renderExpressionEventEditor()}
         {renderBoundsEventEditor()}
-        {renderVariableEventEditor()}
         {renderAnimationEventEditor()}
 
-        <div className="flex space-x-2 pt-4">
+        <div className="flex space-x-3 pt-6 border-t border-gray-200">
           <button
             onClick={handleSave}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            disabled={!hasUnsavedChanges || isSaving}
+            className={`
+              flex-1 flex items-center justify-center space-x-2 px-4 py-3 rounded-lg font-medium text-sm transition-all duration-200
+              ${
+                !hasUnsavedChanges
+                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                  : isSaving
+                  ? "bg-blue-400 text-white cursor-wait"
+                  : "bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 hover:shadow-md"
+              }
+            `}
           >
-            保存
+            {isSaving ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>保存中...</span>
+              </>
+            ) : hasUnsavedChanges ? (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+                <span>変更を保存</span>
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span>保存済み</span>
+              </>
+            )}
           </button>
+
+          {hasUnsavedChanges && (
+            <button
+              onClick={() => {
+                setEditingEvent(selectedEvent);
+                setHasUnsavedChanges(false);
+              }}
+              className="px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors duration-200 text-sm font-medium"
+            >
+              変更を破棄
+            </button>
+          )}
         </div>
+
+        {hasUnsavedChanges && (
+          <div className="flex items-center space-x-2 text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.996-.833-2.464 0L3.349 16.5c-.77.833.192 2.5 1.732 2.5z"
+              />
+            </svg>
+            <span>未保存の変更があります</span>
+          </div>
+        )}
       </div>
     </div>
   );

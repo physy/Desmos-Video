@@ -84,7 +84,6 @@ export interface UnifiedEvent {
   time: number;
   type: "expression" | "bounds" | "animation";
   // Expression event properties
-  expressionId?: string;
   properties?: Partial<DesmosExpression>;
   // Bounds event properties
   bounds?: {

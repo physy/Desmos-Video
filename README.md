@@ -69,14 +69,23 @@ npm run preview
 ```
 src/
   components/      # Reactコンポーネント
-    DesmosGraph.tsx       # Desmosグラフ表示
-    TimelineControls.tsx  # タイムライン操作UI
+    DesmosGraph.tsx                # Desmosグラフ表示
+    TimelineControls.tsx           # タイムライン操作UI
+    UnifiedEventEditPanel.tsx      # 統合イベント編集パネル
+    DynamicPropertyEditor.tsx      # 動的プロパティエディタ
+    GraphConfigPanel.tsx           # グラフ設定パネル
+    VideoExportPanel.tsx           # 動画エクスポートパネル
+    ResizablePanel.tsx             # リサイズ可能パネル
   hooks/           # カスタムフック
-    useTimeline.ts        # タイムライン管理ロジック
+    useTimeline.ts                 # タイムライン管理ロジック（StateManager使用）
+    useStateManager.ts             # StateManagerフック
   types/           # TypeScript型定義
-    desmos.ts             # Desmos API型
-    timeline.ts           # タイムライン関連型
+    desmos.ts                      # Desmos API型
+    timeline.ts                    # タイムライン関連型
   utils/           # ユーティリティ関数
+    stateManager.ts                # 状態管理（Desmos API使用）
+    propertyConfigs.ts             # プロパティ設定定義
+    deepCopy.ts                    # 深いコピーユーティリティ
 ```
 
 ### データ構造

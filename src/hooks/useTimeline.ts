@@ -6,25 +6,22 @@ import type {
   AnimationProject,
   UnifiedEvent,
 } from "../types/timeline";
-import { StateManager } from "../utils/stateManager";
+import { useStateManager } from "./useStateManager";
 
 // UnifiedEventをTimelineEventに変換する関数
 const convertUnifiedEventToTimelineEvent = (unifiedEvent: UnifiedEvent): TimelineEvent => {
   switch (unifiedEvent.type) {
-    case "expression":
+    case "expression": {
+      // propertiesのidを含む全体をargsにコピー
+      const args = { ...(unifiedEvent.properties || {}) };
+
       return {
         id: unifiedEvent.id,
         time: unifiedEvent.time,
         action: "setExpression",
-        args: {
-          id: unifiedEvent.expressionId || "",
-          latex: unifiedEvent.properties?.latex || "",
-          hidden: unifiedEvent.properties?.hidden,
-          color: unifiedEvent.properties?.color,
-          lineStyle: unifiedEvent.properties?.lineStyle,
-          lineWidth: unifiedEvent.properties?.lineWidth,
-        },
+        args,
       };
+    }
     case "bounds":
       return {
         id: unifiedEvent.id,
@@ -47,20 +44,24 @@ const convertUnifiedEventToTimelineEvent = (unifiedEvent: UnifiedEvent): Timelin
 // TimelineEventをUnifiedEventに変換する関数
 const convertTimelineEventToUnifiedEvent = (timelineEvent: TimelineEvent): UnifiedEvent => {
   switch (timelineEvent.action) {
-    case "setExpression":
+    case "setExpression": {
+      // 全てのプロパティを動的にpropertiesに含める
+      const properties: Record<string, unknown> = {};
+
+      // timelineEvent.argsの全プロパティをpropertiesに追加
+      Object.entries(timelineEvent.args).forEach(([key, value]) => {
+        if (value !== undefined) {
+          properties[key] = value;
+        }
+      });
+
       return {
         id: timelineEvent.id || `event-${Date.now()}`,
         time: timelineEvent.time,
         type: "expression",
-        expressionId: (timelineEvent.args.id as string) || "",
-        properties: {
-          latex: timelineEvent.args.latex as string,
-          hidden: timelineEvent.args.hidden as boolean,
-          color: timelineEvent.args.color as string,
-          lineStyle: timelineEvent.args.lineStyle as "SOLID" | "DASHED" | "DOTTED",
-          lineWidth: timelineEvent.args.lineWidth as number,
-        },
+        properties,
       };
+    }
     case "setMathBounds":
       return {
         id: timelineEvent.id || `event-${Date.now()}`,
@@ -86,7 +87,6 @@ const convertTimelineEventToUnifiedEvent = (timelineEvent: TimelineEvent): Unifi
         id: timelineEvent.id || `event-${Date.now()}`,
         time: timelineEvent.time,
         type: "expression",
-        expressionId: "",
         properties: {},
       };
   }
@@ -138,7 +138,7 @@ export const useTimeline = (calculator: Calculator | null) => {
         args: { left: -5, right: 5, top: 5, bottom: -5 },
       },
     ],
-    stateEvents: [], // 新しいstateEvents配列
+    stateEvents: [], // StateEvent配列
     continuousEvents: [],
     duration: 10,
   });
@@ -147,17 +147,66 @@ export const useTimeline = (calculator: Calculator | null) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const animationRef = useRef<number | undefined>(undefined);
 
-  // StateManagerのインスタンスを作成・管理
-  const stateManager = useMemo(() => {
-    const manager = new StateManager(
-      project.initialState,
-      project.timeline,
-      project.stateEvents,
-      project.continuousEvents
-    );
+  // StateManagerのフックを使用
+  const {
+    stateManager,
+    applyStateAtTime,
+    addEvent: addEventToStateManager,
+    removeEvent: removeEventFromStateManager,
+    addStateEvent: addStateEventToStateManager,
+    createStateEventFromCurrentCalculator,
+    clearCache,
+    debugStateCalculation,
+    getDebugInfo: getStateManagerDebugInfo,
+  } = useStateManager({
+    initialState: project.initialState,
+    displayCalculator: calculator,
+    autoCreateComputeCalculator: true,
+  });
 
-    return manager;
-  }, [project.initialState, project.timeline, project.stateEvents, project.continuousEvents]);
+  // プロジェクトの変更時にStateManagerのイベントを同期
+  const projectStringRef = useRef<string>("");
+
+  useMemo(() => {
+    if (!stateManager) return;
+
+    // プロジェクトの内容をシリアライズして変更を検出
+    const currentProjectString = JSON.stringify({
+      timeline: project.timeline,
+      stateEvents: project.stateEvents,
+    });
+
+    // 内容が変更された場合のみ同期
+    if (projectStringRef.current !== currentProjectString) {
+      console.log("[useTimeline] Project changed, synchronizing with StateManager");
+
+      // StateManagerのタイムラインをクリアしてから再構築
+      stateManager.clearTimeline();
+
+      // TimelineEventをUnifiedEventに変換してStateManagerに登録
+      const unifiedEvents = project.timeline.map(convertTimelineEventToUnifiedEvent);
+      unifiedEvents.forEach((event) => addEventToStateManager(event));
+
+      // StateManagerのstateEventsをクリアしてから再構築
+      stateManager.clearStateEvents();
+
+      // StateEventをStateManagerに登録
+      project.stateEvents.forEach((stateEvent) => addStateEventToStateManager(stateEvent));
+
+      projectStringRef.current = currentProjectString;
+
+      console.log("[useTimeline] Synchronized events with StateManager:", {
+        timelineEvents: unifiedEvents.length,
+        stateEvents: project.stateEvents.length,
+      });
+    }
+  }, [
+    project.timeline,
+    project.stateEvents,
+    stateManager,
+    addEventToStateManager,
+    addStateEventToStateManager,
+  ]);
 
   // プロジェクトの参照を安定化
   const projectRef = useRef(project);
@@ -166,61 +215,35 @@ export const useTimeline = (calculator: Calculator | null) => {
   // 最後に適用されたstateの時刻を追跡
   const lastAppliedTimeRef = useRef<number>(-1);
 
-  // 特定の時刻に移動（新しい計算済み領域方式）
+  // 特定の時刻に移動（新しいStateManager使用）
   const seekTo = useCallback(
-    (time: number) => {
-      if (!calculator) return;
+    async (time: number) => {
+      if (!calculator || !stateManager) return;
 
       setCurrentTime(time);
 
       try {
-        // 計算済み領域内かチェック
-        if (!stateManager.isTimeCalculated(time)) {
-          console.warn(
-            `Time ${time}s is not in calculated region. Available regions:`,
-            stateManager.getCalculatedRegions()
-          );
-          return;
-        }
-
-        // StateManagerから指定時刻のstateを取得
-        const targetState = stateManager.getStateAtTime(time);
-
-        // calculatorにstateを適用
-        stateManager.applyStateToCalculator(targetState, calculator);
-
+        // StateManagerを使用して状態を適用
+        await applyStateAtTime(time);
         lastAppliedTimeRef.current = time;
 
-        console.log(`Seeked to ${time}s`, {
-          cacheInfo: stateManager.getCacheInfo(),
-          maxCalculatedTime: stateManager.getMaxCalculatedTime(),
-          appliedState: targetState,
-        });
+        console.log(`[useTimeline] Seeked to ${time}s`);
       } catch (error) {
-        console.error(`Failed to seek to ${time}s:`, error);
-        // エラーの場合は最も近い計算済み時刻に移動
-        const regions = stateManager.getCalculatedRegions();
-        if (regions.length > 0) {
-          const nearestTime = Math.min(time, Math.max(...regions.map((r) => r.end - 0.1)));
-          if (nearestTime !== time) {
-            setCurrentTime(nearestTime);
-            console.log(`Adjusted seek to nearest calculated time: ${nearestTime}s`);
-          }
-        }
+        console.error(`[useTimeline] Failed to seek to ${time}s:`, error);
       }
     },
-    [calculator, stateManager]
+    [calculator, stateManager, applyStateAtTime]
   );
 
-  // 改善されたアニメーション再生（新しい計算済み領域方式）
+  // アニメーション再生（StateManager使用）
   const play = useCallback(() => {
-    if (!calculator || isPlaying) return;
+    if (!calculator || isPlaying || !stateManager) return;
 
     setIsPlaying(true);
     const startTime = Date.now();
     const initialTime = currentTime;
 
-    const animate = () => {
+    const animate = async () => {
       const elapsed = (Date.now() - startTime) / 1000;
       const newTime = initialTime + elapsed;
       const currentProject = projectRef.current;
@@ -229,57 +252,17 @@ export const useTimeline = (calculator: Calculator | null) => {
         setCurrentTime(currentProject.duration);
         setIsPlaying(false);
 
-        // 最終時刻が計算済み領域内かチェックして適用
+        // 最終時刻の状態を適用
         try {
-          if (stateManager.isTimeCalculated(currentProject.duration)) {
-            const finalState = stateManager.getStateAtTime(currentProject.duration);
-            stateManager.applyStateToCalculator(finalState, calculator);
-            lastAppliedTimeRef.current = currentProject.duration;
-          } else {
-            console.warn(`Final time ${currentProject.duration}s is not in calculated region`);
-          }
+          await applyStateAtTime(currentProject.duration);
+          lastAppliedTimeRef.current = currentProject.duration;
         } catch (error) {
-          console.error("Failed to apply final state:", error);
+          console.error("[useTimeline] Failed to apply final state:", error);
         }
         return;
       }
 
       setCurrentTime(newTime);
-
-      // 現在時刻が計算済み領域内かチェック
-      if (!stateManager.isTimeCalculated(newTime)) {
-        // 計算済み領域を拡張してみる
-        try {
-          const regions = stateManager.getCalculatedRegions();
-          const hasInfiniteRegion = regions.some((r) => r.end === Infinity);
-
-          if (!hasInfiniteRegion) {
-            const maxCalculatedTime = stateManager.getMaxCalculatedTime();
-            if (newTime > maxCalculatedTime) {
-              // maxCalculatedTimeから newTime まで計算を拡張
-              console.log(`Extending calculation from ${maxCalculatedTime}s to ${newTime}s`);
-              stateManager.calculateFromTime(maxCalculatedTime, newTime);
-            }
-          } else {
-            console.warn(
-              `Infinite region exists, but time ${newTime}s is not calculated. This should not happen.`
-            );
-          }
-        } catch (error) {
-          console.warn(`Failed to extend calculation to ${newTime}s:`, error);
-          setIsPlaying(false);
-          return;
-        }
-
-        // 再度チェック
-        if (!stateManager.isTimeCalculated(newTime)) {
-          console.warn(
-            `Time ${newTime}s is still not in calculated region after extension, pausing playback`
-          );
-          setIsPlaying(false);
-          return;
-        }
-      }
 
       // 状態適用の頻度制御
       const updateThreshold = 0.033; // 30fps
@@ -287,11 +270,10 @@ export const useTimeline = (calculator: Calculator | null) => {
 
       if (timeDiff >= updateThreshold) {
         try {
-          const currentState = stateManager.getStateAtTime(newTime);
-          stateManager.applyStateToCalculator(currentState, calculator);
+          await applyStateAtTime(newTime);
           lastAppliedTimeRef.current = newTime;
         } catch (error) {
-          console.warn("Failed to apply state during playback:", error);
+          console.warn("[useTimeline] Failed to apply state during playback:", error);
         }
       }
 
@@ -299,55 +281,50 @@ export const useTimeline = (calculator: Calculator | null) => {
     };
 
     animationRef.current = requestAnimationFrame(animate);
-  }, [calculator, isPlaying, currentTime, stateManager]);
+  }, [calculator, isPlaying, currentTime, stateManager, applyStateAtTime]);
+
+  // アニメーションを停止
+  const pause = useCallback(() => {
+    setIsPlaying(false);
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
+  }, []);
 
   // StateEventを追加
   const addStateEvent = useCallback(
     (time: number, description?: string) => {
-      if (!calculator) return null;
+      if (!calculator || !stateManager) return null;
 
-      const stateEvent = stateManager.createStateEventFromCalculator(time, calculator, description);
+      const stateEvent = createStateEventFromCurrentCalculator(time, description);
+      if (!stateEvent) return null;
 
       setProject((prev) => ({
         ...prev,
         stateEvents: [...prev.stateEvents, stateEvent].sort((a, b) => a.time - b.time),
       }));
 
-      console.log(`State event added at ${time}s:`, stateEvent);
+      console.log(`[useTimeline] State event added at ${time}s:`, stateEvent);
       return stateEvent;
     },
-    [calculator, stateManager]
+    [calculator, stateManager, createStateEventFromCurrentCalculator]
   );
 
   // StateEventを削除
   const removeStateEvent = useCallback(
     (eventId: string) => {
-      stateManager.removeStateEvent(eventId);
+      if (!stateManager) return;
+
+      removeEventFromStateManager(eventId);
 
       setProject((prev) => ({
         ...prev,
         stateEvents: prev.stateEvents.filter((event) => event.id !== eventId),
       }));
 
-      console.log(`State event removed: ${eventId}`);
+      console.log(`[useTimeline] State event removed: ${eventId}`);
     },
-    [stateManager]
-  );
-
-  // 指定時刻まで計算を進める
-  const calculateToTime = useCallback(
-    (targetTime: number) => {
-      if (!calculator) return;
-
-      try {
-        // 現在の時刻から targetTime まで計算
-        stateManager.calculateFromTime(currentTime, targetTime);
-        console.log(`Calculated from ${currentTime}s to ${targetTime}s`);
-      } catch (error) {
-        console.error(`Failed to calculate to ${targetTime}s:`, error);
-      }
-    },
-    [calculator, currentTime, stateManager]
+    [stateManager, removeEventFromStateManager]
   );
 
   // 現在時刻でStateEventを作成
@@ -361,25 +338,6 @@ export const useTimeline = (calculator: Calculator | null) => {
     [addStateEvent, currentTime]
   );
 
-  // アニメーションを停止
-  const pause = useCallback(() => {
-    setIsPlaying(false);
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
-  }, []);
-
-  // チェックポイントを作成
-  const createCheckpoint = useCallback(
-    (time: number) => {
-      if (!calculator) return;
-
-      stateManager.createCheckpoint(time, calculator);
-      console.log(`Checkpoint created at ${time}s`, stateManager.getCacheInfo());
-    },
-    [calculator, stateManager]
-  );
-
   // イベントを追加
   const addEvent = useCallback(
     (event: Omit<TimelineEvent, "id">) => {
@@ -388,55 +346,96 @@ export const useTimeline = (calculator: Calculator | null) => {
         id: `event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       };
 
-      setProject((prev) => {
-        const newProject = {
-          ...prev,
-          timeline: [...prev.timeline, newEvent].sort((a, b) => a.time - b.time),
-        };
+      setProject((prev) => ({
+        ...prev,
+        timeline: [...prev.timeline, newEvent].sort((a, b) => a.time - b.time),
+      }));
 
-        // StateManagerを更新
-        stateManager.updateTimeline(newProject.timeline);
+      // StateManagerに追加
+      const unifiedEvent = convertTimelineEventToUnifiedEvent(newEvent);
+      addEventToStateManager(unifiedEvent);
 
-        return newProject;
-      });
+      console.log(`[useTimeline] Event added:`, newEvent);
     },
-    [stateManager]
+    [addEventToStateManager]
   );
 
   // 連続イベントを追加
-  const addContinuousEvent = useCallback(
-    (event: ContinuousEvent) => {
-      setProject((prev) => {
-        const newProject = {
-          ...prev,
-          continuousEvents: [...prev.continuousEvents, event],
-        };
+  const addContinuousEvent = useCallback((event: ContinuousEvent) => {
+    setProject((prev) => ({
+      ...prev,
+      continuousEvents: [...prev.continuousEvents, event],
+    }));
 
-        // StateManagerを更新
-        stateManager.updateContinuousEvents(newProject.continuousEvents);
-
-        return newProject;
-      });
-    },
-    [stateManager]
-  );
+    console.log(`[useTimeline] Continuous event added:`, event);
+  }, []);
 
   // イベントを削除
   const removeEvent = useCallback(
     (eventId: string) => {
-      setProject((prev) => {
-        const newProject = {
-          ...prev,
-          timeline: prev.timeline.filter((event) => event.id !== eventId),
-        };
+      setProject((prev) => ({
+        ...prev,
+        timeline: prev.timeline.filter((event) => event.id !== eventId),
+      }));
 
-        // StateManagerを更新
-        stateManager.updateTimeline(newProject.timeline);
+      // StateManagerからも削除
+      removeEventFromStateManager(eventId);
 
-        return newProject;
-      });
+      console.log(`[useTimeline] Event removed: ${eventId}`);
     },
-    [stateManager]
+    [removeEventFromStateManager]
+  );
+
+  // TimelineEventを更新
+  const updateEvent = useCallback(
+    (eventId: string, updates: Partial<Omit<TimelineEvent, "id">>) => {
+      let updated = false;
+
+      console.log(`[useTimeline] Updating event ${eventId}:`, updates);
+
+      setProject((prev) => {
+        const newTimeline = prev.timeline.map((event) => {
+          if (event.id === eventId) {
+            updated = true;
+            return { ...event, ...updates };
+          }
+          return event;
+        });
+
+        if (updated) {
+          console.log(`[useTimeline] Event ${eventId} updated, timeline will be re-synced`);
+          return { ...prev, timeline: newTimeline };
+        }
+
+        return prev;
+      });
+
+      return updated;
+    },
+    []
+  );
+
+  // TimelineEventを挿入
+  const insertEvent = useCallback(
+    (event: Omit<TimelineEvent, "id">) => {
+      const newEvent: TimelineEvent = {
+        ...event,
+        id: `event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      };
+
+      setProject((prev) => ({
+        ...prev,
+        timeline: [...prev.timeline, newEvent].sort((a, b) => a.time - b.time),
+      }));
+
+      // StateManagerに追加
+      const unifiedEvent = convertTimelineEventToUnifiedEvent(newEvent);
+      addEventToStateManager(unifiedEvent);
+
+      console.log(`[useTimeline] Event inserted:`, newEvent);
+      return newEvent;
+    },
+    [addEventToStateManager]
   );
 
   // 初期stateを更新
@@ -451,87 +450,33 @@ export const useTimeline = (calculator: Calculator | null) => {
       initialState: currentState,
     }));
 
-    stateManager.updateInitialState(currentState);
-    console.log("Initial state updated", currentState);
-  }, [calculator, stateManager]);
-
-  // キャッシュをクリア
-  const clearCache = useCallback(() => {
-    stateManager.clearCache();
-    console.log("Cache cleared");
-  }, [stateManager]);
-
-  // デバッグ情報を取得（新システム版）
-  const getDebugInfo = useCallback(() => {
-    return {
-      currentTime,
-      lastAppliedTime: lastAppliedTimeRef.current,
-      cacheInfo: stateManager.getCacheInfo(),
-      criticalTimes: stateManager.getCriticalTimes(),
-      maxCalculatedTime: stateManager.getMaxCalculatedTime(),
-      calculatedRegions: stateManager.getCalculatedRegions(),
-      stateEventsCount: project.stateEvents.length,
-      project,
-      // 新しいデバッグ情報
-      detailedDebug: stateManager.getDebugInfo(),
-    };
-  }, [currentTime, stateManager, project]);
-
-  // 特定時刻でのデバッグ情報
-  const getDebugAtTime = useCallback(
-    (time: number) => {
-      return stateManager.getDebugAtTime(time);
-    },
-    [stateManager]
-  );
-
-  // TimelineEventを編集
-  const updateEvent = useCallback(
-    (eventId: string, updates: Partial<Omit<TimelineEvent, "id">>) => {
-      const success = stateManager.updateTimelineEvent(eventId, updates);
-      if (success) {
-        setProject((prev) => ({
-          ...prev,
-          timeline: stateManager.getTimelineEvents(),
-        }));
-        console.log(`Timeline event ${eventId} updated`, updates);
-      }
-      return success;
-    },
-    [stateManager]
-  );
-
-  // TimelineEventを挿入（より簡単な方法）
-  const insertEvent = useCallback(
-    (event: Omit<TimelineEvent, "id">) => {
-      const newEvent = stateManager.addTimelineEvent(event);
-      setProject((prev) => ({
-        ...prev,
-        timeline: stateManager.getTimelineEvents(),
-      }));
-      console.log(`Timeline event inserted:`, newEvent);
-      return newEvent;
-    },
-    [stateManager]
-  );
+    console.log("[useTimeline] Initial state updated", currentState);
+  }, [calculator]);
 
   // UnifiedEventを更新する機能
-  const updateUnifiedEvent = useCallback(
-    (unifiedEvent: UnifiedEvent) => {
-      const timelineEvent = convertUnifiedEventToTimelineEvent(unifiedEvent);
+  const updateUnifiedEvent = useCallback((unifiedEvent: UnifiedEvent) => {
+    console.log("[useTimeline] Updating UnifiedEvent:", unifiedEvent);
 
-      setProject((prev) => ({
-        ...prev,
-        timeline: prev.timeline.map((event) =>
-          event.id === timelineEvent.id ? timelineEvent : event
-        ),
-      }));
+    setProject((prev) => {
+      const newTimeline = prev.timeline.map((event) =>
+        event.id === unifiedEvent.id ? convertUnifiedEventToTimelineEvent(unifiedEvent) : event
+      );
 
-      // StateManagerのキャッシュをクリア
-      stateManager.clearCache();
-    },
-    [stateManager]
-  );
+      const hasChanged = JSON.stringify(prev.timeline) !== JSON.stringify(newTimeline);
+
+      if (hasChanged) {
+        console.log("[useTimeline] Timeline updated, triggering re-sync");
+        return {
+          ...prev,
+          timeline: newTimeline,
+        };
+      }
+
+      return prev;
+    });
+
+    console.log("[useTimeline] UnifiedEvent update completed");
+  }, []);
 
   // TimelineEventをUnifiedEventとして取得する機能
   const getUnifiedEvent = useCallback(
@@ -540,6 +485,27 @@ export const useTimeline = (calculator: Calculator | null) => {
       return timelineEvent ? convertTimelineEventToUnifiedEvent(timelineEvent) : null;
     },
     [project.timeline]
+  );
+
+  // デバッグ情報を取得
+  const getDebugInfo = useCallback(() => {
+    return {
+      currentTime,
+      lastAppliedTime: lastAppliedTimeRef.current,
+      stateEventsCount: project.stateEvents.length,
+      timelineEventsCount: project.timeline.length,
+      project,
+      stateManagerDebug: getStateManagerDebugInfo(),
+    };
+  }, [currentTime, project, getStateManagerDebugInfo]);
+
+  // 特定時刻でのデバッグ情報
+  const getDebugAtTime = useCallback(
+    async (time: number) => {
+      if (!stateManager) return null;
+      return await debugStateCalculation(time);
+    },
+    [stateManager, debugStateCalculation]
   );
 
   return {
@@ -556,10 +522,8 @@ export const useTimeline = (calculator: Calculator | null) => {
     addStateEvent,
     removeStateEvent,
     captureCurrentState,
-    calculateToTime,
     addContinuousEvent,
     removeEvent,
-    createCheckpoint,
     updateInitialState,
     clearCache,
     getDebugInfo,

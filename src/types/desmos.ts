@@ -146,14 +146,7 @@ export interface GraphingCalculatorOptions {
 }
 
 export interface Calculator {
-  setExpression: (expression: {
-    id: string;
-    latex: string;
-    hidden?: boolean;
-    color?: string;
-    lineStyle?: string;
-    lineWidth?: number;
-  }) => void;
+  setExpression: (expression: Partial<DesmosExpression>) => void;
   removeExpression: (options: { id: string }) => void;
   setMathBounds: (bounds: MathBounds) => void;
   getExpressions: () => DesmosExpression[];

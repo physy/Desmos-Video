@@ -186,28 +186,16 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     const timelineWidth = rect.width;
     const clickTime = (clickX / timelineWidth) * duration;
 
-    // 既存の式IDから次の番号を決定
-    const existingIds = timeline
-      .filter((event) => event.action === "setExpression")
-      .map((event) => event.args.id as string)
-      .filter((id) => id && id.startsWith("expr_"))
-      .map((id) => parseInt(id.replace("expr_", "")) || 0);
-
-    const nextId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
-
     // ダブルクリックでデフォルトの式イベントを挿入
     if (onInsertEvent) {
       onInsertEvent(clickTime, {
         action: "setExpression",
         args: {
-          id: `expr_${nextId}`,
-          latex: `y = ${nextId === 1 ? "x" : `x^${nextId}`}`, // 1番目はy=x、2番目以降はy=x^n
-          color: ["#2563eb", "#dc2626", "#16a34a", "#ca8a04", "#9333ea"][nextId % 5] || "#6b7280",
-          hidden: false,
+          id: "",
         },
       });
 
-      console.log(`Created expression event: expr_${nextId} at time ${clickTime.toFixed(2)}s`);
+      console.log(`Created expression event at time ${clickTime.toFixed(2)}s`);
     }
   };
 
@@ -584,22 +572,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
 
               <button
                 onClick={() => {
-                  // 既存の式IDから次の番号を決定
-                  const existingIds = timeline
-                    .filter((event) => event.action === "setExpression")
-                    .map((event) => event.args.id as string)
-                    .filter((id) => id && id.startsWith("expr_"))
-                    .map((id) => parseInt(id.replace("expr_", "")) || 0);
-
-                  const nextId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
-
                   insertEventAtTime("setExpression", {
-                    id: `expr_${nextId}`,
-                    latex: `y = ${nextId === 1 ? "x" : `x^${nextId}`}`,
-                    color:
-                      ["#2563eb", "#dc2626", "#16a34a", "#ca8a04", "#9333ea"][nextId % 5] ||
-                      "#6b7280",
-                    hidden: false,
+                    id: "",
                   });
                 }}
                 className="w-full p-3 text-left bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg"

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { DesmosGraph } from "./components/DesmosGraph";
 import { TimelineControls } from "./components/TimelineControls";
 import { UnifiedEventEditPanel } from "./components/UnifiedEventEditPanel";
@@ -105,7 +105,6 @@ function App() {
     updateUnifiedEvent,
     getUnifiedEvent,
     captureCurrentState,
-    createCheckpoint,
     updateInitialState,
     clearCache,
     getDebugInfo,
@@ -169,10 +168,10 @@ function App() {
     });
   }, [addEvent]);
 
-  // チェックポイントを作成
+  // チェックポイントを作成（機能削除のため空実装）
   const handleCreateCheckpoint = useCallback(() => {
-    createCheckpoint(currentTime);
-  }, [createCheckpoint, currentTime]);
+    console.log("Checkpoint functionality not available in V2");
+  }, []);
 
   // 現在のstateをキャプチャ
   const handleCaptureState = useCallback(() => {
@@ -182,48 +181,33 @@ function App() {
     }
   }, [captureCurrentState, currentTime]);
 
-  // デバッグ情報を表示（新システム版）
-  const handleShowDebugInfo = useCallback(() => {
+  // デバッグ情報を表示（StateManager版）
+  const handleShowDebugInfo = useCallback(async () => {
     const debugInfo = getDebugInfo();
     console.log("Debug Info:", debugInfo);
 
-    // 詳細なデバッグ情報
-    console.log("Detailed Debug:", debugInfo.detailedDebug);
-
     // 現在時刻周辺のデバッグ情報
-    const timeDebug = getDebugAtTime(currentTime);
+    const timeDebug = await getDebugAtTime(currentTime);
     console.log(`Debug at ${currentTime}s:`, timeDebug);
+
+    const stateManagerDebug = debugInfo.stateManagerDebug as Record<string, unknown>;
 
     console.log(
       `=== 基本情報 ===\n` +
         `Current Time: ${debugInfo.currentTime.toFixed(1)}s\n` +
         `Last Applied: ${debugInfo.lastAppliedTime.toFixed(1)}s\n` +
-        `Max Calculated: ${debugInfo.maxCalculatedTime.toFixed(1)}s\n\n` +
-        `=== 計算済み領域 ===\n` +
-        `Regions Count: ${debugInfo.detailedDebug.calculatedRegions.length}\n` +
-        debugInfo.detailedDebug.calculatedRegions
-          .map((r, i) => `${i + 1}. ${r.start}s-${r.end}s`)
-          .join("\n") +
-        "\n\n" +
-        `=== イベント ===\n` +
-        `Timeline Events: ${debugInfo.detailedDebug.timelineEvents.length}\n` +
-        debugInfo.detailedDebug.timelineEvents.map((e) => `${e.time}s: ${e.action}`).join("\n") +
-        "\n\n" +
+        `Timeline Events: ${debugInfo.timelineEventsCount}\n` +
+        `State Events: ${debugInfo.stateEventsCount}\n\n` +
+        `=== StateManager情報 ===\n` +
+        `StateManager Debug: ${JSON.stringify(stateManagerDebug, null, 2)}\n\n` +
         `=== 現在時刻 (${currentTime}s) の状況 ===\n` +
-        `Found Region: ${
-          timeDebug.foundRegion
-            ? `${timeDebug.foundRegion.start}s-${timeDebug.foundRegion.end}s`
-            : "なし"
-        }\n` +
-        `Nearby Events: ${timeDebug.nearbyEvents
-          .map((e) => `${e.time}s(${e.action})`)
-          .join(", ")}\n` +
-        `Cached States: ${timeDebug.cachedStates.join(", ")}`
+        `Time Debug Result: ${timeDebug ? "Success" : "Failed"}\n` +
+        (timeDebug ? `Applied Events: ${timeDebug.eventsApplied.length}` : "")
     );
   }, [getDebugInfo, getDebugAtTime, currentTime]);
 
-  // 計算済み領域の情報を取得（新システム用）
-  const calculatedRegions = getDebugInfo().calculatedRegions;
+  // 計算済み領域の情報を取得（StateManager用）
+  const calculatedRegions: Array<{ start: number; end: number }> = [];
 
   return (
     <div className="h-screen flex flex-col bg-gray-100 overflow-hidden">
@@ -276,23 +260,17 @@ function App() {
                   Debug
                 </button>
                 <button
-                  onClick={() => {
-                    console.log("=== 2s問題デバッグ ===");
-                    [1.9, 2.0, 2.1].forEach((time) => {
-                      const debug = getDebugAtTime(time);
-                      console.log(`Time ${time}s:`, debug);
-                    });
+                  onClick={async () => {
+                    console.log("=== StateManagerデバッグ ===");
+                    const debugInfo = getDebugInfo();
+                    console.log("Debug info:", debugInfo);
 
-                    // 計算済み領域の詳細を確認
-                    const regions = getDebugInfo().detailedDebug.calculatedRegions;
-                    console.log("All regions:", regions);
-
-                    // 2s前後で状態を比較
+                    // 2s前後の状態を比較
                     try {
-                      seekTo(1.9);
-                      setTimeout(() => {
+                      await seekTo(1.9);
+                      setTimeout(async () => {
                         console.log("State at 1.9s:", calculator?.getExpressions());
-                        seekTo(2.1);
+                        await seekTo(2.1);
                         setTimeout(() => {
                           console.log("State at 2.1s:", calculator?.getExpressions());
                         }, 100);
@@ -450,18 +428,6 @@ function App() {
                               setSelectedEvent(null);
                             }
                           }}
-                          availableExpressions={project.initialState.expressions.list
-                            .filter((expr) => expr.id && expr.latex)
-                            .map((expr) => ({
-                              id: expr.id!,
-                              latex: expr.latex!,
-                              color: expr.color,
-                            }))}
-                          getCurrentExpressions={() =>
-                            calculator
-                              ? calculator.getExpressions().filter((expr) => expr.id && expr.latex)
-                              : []
-                          }
                         />
                       </div>
                     )}
@@ -510,23 +476,17 @@ function App() {
                                 State Events: {project.stateEvents.length}
                               </div>
                               <div>現在時刻: {currentTime.toFixed(3)}秒</div>
-                              <div className="text-orange-600">
-                                最大計算済み時刻: {getDebugInfo().maxCalculatedTime.toFixed(1)}秒
-                              </div>
                               <div>初期式数: {project.initialState.expressions.list.length}</div>
                             </div>
                           </div>
 
                           <div className="p-2 bg-blue-50 rounded">
-                            <h3 className="text-xs font-medium text-blue-700 mb-2">計算システム</h3>
+                            <h3 className="text-xs font-medium text-blue-700 mb-2">StateManager</h3>
                             <div className="text-xs text-blue-600 space-y-1">
-                              <div>
-                                計算済み領域: {getDebugInfo().cacheInfo.calculatedRegions}個
-                              </div>
-                              <div>
-                                イベントキャッシュ: {getDebugInfo().cacheInfo.eventCacheSize}個
-                              </div>
-                              <div>重要時刻数: {getDebugInfo().criticalTimes.length}個</div>
+                              <div>新しいAPI方式を使用</div>
+                              <div>Desmos calculatorで状態計算</div>
+                              <div>Timeline Events: {getDebugInfo().timelineEventsCount}</div>
+                              <div>State Events: {getDebugInfo().stateEventsCount}</div>
                             </div>
                           </div>
 
