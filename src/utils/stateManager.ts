@@ -341,6 +341,8 @@ export class StateManager {
 
         // 指定回数アクションを実行
         for (let i = 0; i < steps; i++) {
+          // FIXME: アクションがどうしても実行されない
+          // コードの実行自体はされている
           this.computeCalculator.controller.dispatch({ type: "action-single-step", id: targetId });
           debugLog(`Action step ${i + 1}/${steps} for ${targetId}`);
         }

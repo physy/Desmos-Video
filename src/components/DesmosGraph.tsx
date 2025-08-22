@@ -45,6 +45,7 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
         border: false,
         lockViewport: false,
         branding: false,
+        pasteGraphLink: true,
         ...optionsRef.current,
       };
 
