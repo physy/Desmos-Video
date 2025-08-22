@@ -229,107 +229,355 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
   const renderAnimationEventEditor = () => {
     if (editingEvent.type !== "animation") return null;
 
+    const currentAnimation = editingEvent.animation || {
+      type: "variable",
+      targetId: "",
+      duration: 1,
+      variable: { name: "", startValue: 0, endValue: 1, autoDetect: false },
+      easing: "linear",
+    };
+
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+        <h4 className="text-sm font-medium text-gray-700">アニメーション設定</h4>
+
+        {/* アニメーションタイプ選択 */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">変数名</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            アニメーションタイプ
+          </label>
+          <select
+            value={currentAnimation.type || "variable"}
+            onChange={(e) => {
+              const newType = e.target.value as "variable" | "property" | "action";
+              const newAnimation = {
+                type: newType,
+                targetId: currentAnimation.targetId || "",
+                duration: currentAnimation.duration || 1,
+                easing: currentAnimation.easing || "linear",
+                ...(newType === "variable" && {
+                  variable: { name: "", startValue: 0, endValue: 1, autoDetect: false },
+                }),
+                ...(newType === "property" && {
+                  property: { name: "", startValue: 0, endValue: 1 },
+                }),
+                ...(newType === "action" && {
+                  action: { steps: 10, frameInterval: 1 },
+                }),
+              };
+
+              handleEventChange({ animation: newAnimation });
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="variable">変数値アニメーション</option>
+            <option value="property">プロパティアニメーション</option>
+            <option value="action">アクション実行</option>
+          </select>
+        </div>
+
+        {/* 対象Expression ID */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">対象Expression ID</label>
           <input
             type="text"
-            value={editingEvent.animation?.variable || ""}
+            value={currentAnimation.targetId || ""}
             onChange={(e) => {
-              const currentAnimation = deepCopy(
-                editingEvent.animation || {
-                  variable: "",
-                  startValue: 0,
-                  endValue: 1,
-                  duration: 1,
-                }
-              );
-              currentAnimation.variable = e.target.value;
-
               handleEventChange({
-                animation: currentAnimation,
+                animation: { ...currentAnimation, targetId: e.target.value },
               });
             }}
-            placeholder="t"
+            placeholder="expression-id"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">開始値</label>
-          <input
-            type="number"
-            value={editingEvent.animation?.startValue || 0}
-            onChange={(e) => {
-              const currentAnimation = deepCopy(
-                editingEvent.animation || {
-                  variable: "",
-                  startValue: 0,
-                  endValue: 1,
-                  duration: 1,
-                }
-              );
-              currentAnimation.startValue = parseFloat(e.target.value);
-
-              handleEventChange({
-                animation: currentAnimation,
-              });
-            }}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">終了値</label>
-          <input
-            type="number"
-            value={editingEvent.animation?.endValue || 1}
-            onChange={(e) => {
-              const currentAnimation = deepCopy(
-                editingEvent.animation || {
-                  variable: "",
-                  startValue: 0,
-                  endValue: 1,
-                  duration: 1,
-                }
-              );
-              currentAnimation.endValue = parseFloat(e.target.value);
-
-              handleEventChange({
-                animation: currentAnimation,
-              });
-            }}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
-
+        {/* アニメーション時間 */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             アニメーション時間（秒）
           </label>
           <input
             type="number"
-            value={editingEvent.animation?.duration || 1}
+            value={currentAnimation.duration || 1}
             onChange={(e) => {
-              const currentAnimation = deepCopy(
-                editingEvent.animation || {
-                  variable: "",
-                  startValue: 0,
-                  endValue: 1,
-                  duration: 1,
-                }
-              );
-              currentAnimation.duration = parseFloat(e.target.value);
-
               handleEventChange({
-                animation: currentAnimation,
+                animation: { ...currentAnimation, duration: parseFloat(e.target.value) },
               });
             }}
             step="0.1"
             min="0.1"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
+        </div>
+
+        {/* 変数アニメーション設定 */}
+        {currentAnimation.type === "variable" && (
+          <div className="space-y-3 p-3 border border-blue-200 rounded-lg bg-blue-50">
+            <h5 className="text-sm font-medium text-blue-800">変数アニメーション設定</h5>
+
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="autoDetect"
+                checked={currentAnimation.variable?.autoDetect || false}
+                onChange={(e) => {
+                  const variable = currentAnimation.variable || {
+                    name: "",
+                    startValue: 0,
+                    endValue: 1,
+                    autoDetect: false,
+                  };
+                  handleEventChange({
+                    animation: {
+                      ...currentAnimation,
+                      variable: { ...variable, autoDetect: e.target.checked },
+                    },
+                  });
+                }}
+                className="rounded"
+              />
+              <label htmlFor="autoDetect" className="text-sm text-gray-700">
+                LaTeXから変数名を自動検出
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">変数名</label>
+              <input
+                type="text"
+                value={currentAnimation.variable?.name || ""}
+                onChange={(e) => {
+                  const variable = currentAnimation.variable || {
+                    name: "",
+                    startValue: 0,
+                    endValue: 1,
+                    autoDetect: false,
+                  };
+                  handleEventChange({
+                    animation: {
+                      ...currentAnimation,
+                      variable: { ...variable, name: e.target.value },
+                    },
+                  });
+                }}
+                placeholder={
+                  currentAnimation.variable?.autoDetect ? "自動検出されます" : "t, x, aなど"
+                }
+                disabled={currentAnimation.variable?.autoDetect}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">開始値</label>
+                <input
+                  type="number"
+                  value={currentAnimation.variable?.startValue || 0}
+                  onChange={(e) => {
+                    const variable = currentAnimation.variable || {
+                      name: "",
+                      startValue: 0,
+                      endValue: 1,
+                      autoDetect: false,
+                    };
+                    handleEventChange({
+                      animation: {
+                        ...currentAnimation,
+                        variable: { ...variable, startValue: parseFloat(e.target.value) },
+                      },
+                    });
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">終了値</label>
+                <input
+                  type="number"
+                  value={currentAnimation.variable?.endValue || 1}
+                  onChange={(e) => {
+                    const variable = currentAnimation.variable || {
+                      name: "",
+                      startValue: 0,
+                      endValue: 1,
+                      autoDetect: false,
+                    };
+                    handleEventChange({
+                      animation: {
+                        ...currentAnimation,
+                        variable: { ...variable, endValue: parseFloat(e.target.value) },
+                      },
+                    });
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* プロパティアニメーション設定 */}
+        {currentAnimation.type === "property" && (
+          <div className="space-y-3 p-3 border border-green-200 rounded-lg bg-green-50">
+            <h5 className="text-sm font-medium text-green-800">プロパティアニメーション設定</h5>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">プロパティ名</label>
+              <select
+                value={currentAnimation.property?.name || ""}
+                onChange={(e) => {
+                  const property = currentAnimation.property || {
+                    name: "",
+                    startValue: 0,
+                    endValue: 1,
+                  };
+                  handleEventChange({
+                    animation: {
+                      ...currentAnimation,
+                      property: { ...property, name: e.target.value },
+                    },
+                  });
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">プロパティを選択</option>
+                <option value="lineOpacity">線の透明度</option>
+                <option value="pointSize">点のサイズ</option>
+                <option value="lineWidth">線の太さ</option>
+                <option value="fillOpacity">塗りつぶしの透明度</option>
+                <option value="pointOpacity">点の透明度</option>
+                <option value="movablePointSize">移動可能な点のサイズ</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">開始値</label>
+                <input
+                  type="number"
+                  value={currentAnimation.property?.startValue || 0}
+                  onChange={(e) => {
+                    const property = currentAnimation.property || {
+                      name: "",
+                      startValue: 0,
+                      endValue: 1,
+                    };
+                    handleEventChange({
+                      animation: {
+                        ...currentAnimation,
+                        property: { ...property, startValue: parseFloat(e.target.value) },
+                      },
+                    });
+                  }}
+                  step="0.1"
+                  min="0"
+                  max="1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">終了値</label>
+                <input
+                  type="number"
+                  value={currentAnimation.property?.endValue || 1}
+                  onChange={(e) => {
+                    const property = currentAnimation.property || {
+                      name: "",
+                      startValue: 0,
+                      endValue: 1,
+                    };
+                    handleEventChange({
+                      animation: {
+                        ...currentAnimation,
+                        property: { ...property, endValue: parseFloat(e.target.value) },
+                      },
+                    });
+                  }}
+                  step="0.1"
+                  min="0"
+                  max="1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* アクション実行設定 */}
+        {currentAnimation.type === "action" && (
+          <div className="space-y-3 p-3 border border-purple-200 rounded-lg bg-purple-50">
+            <h5 className="text-sm font-medium text-purple-800">アクション実行設定</h5>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  実行ステップ数
+                </label>
+                <input
+                  type="number"
+                  value={currentAnimation.action?.steps || 10}
+                  onChange={(e) => {
+                    const action = currentAnimation.action || { steps: 10, frameInterval: 1 };
+                    handleEventChange({
+                      animation: {
+                        ...currentAnimation,
+                        action: { ...action, steps: parseInt(e.target.value) },
+                      },
+                    });
+                  }}
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">フレーム間隔</label>
+                <input
+                  type="number"
+                  value={currentAnimation.action?.frameInterval || 1}
+                  onChange={(e) => {
+                    const action = currentAnimation.action || { steps: 10, frameInterval: 1 };
+                    handleEventChange({
+                      animation: {
+                        ...currentAnimation,
+                        action: { ...action, frameInterval: parseInt(e.target.value) },
+                      },
+                    });
+                  }}
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="text-xs text-purple-600">
+              指定したIDのexpressionを {currentAnimation.action?.frameInterval || 1} フレームごとに{" "}
+              {currentAnimation.action?.steps || 10} ステップ実行します
+            </div>
+          </div>
+        )}
+
+        {/* イージング設定 */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">イージング関数</label>
+          <select
+            value={currentAnimation.easing || "linear"}
+            onChange={(e) => {
+              handleEventChange({
+                animation: {
+                  ...currentAnimation,
+                  easing: e.target.value as "linear" | "ease-in" | "ease-out" | "ease-in-out",
+                },
+              });
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="linear">リニア</option>
+            <option value="ease-in">イーズイン</option>
+            <option value="ease-out">イーズアウト</option>
+            <option value="ease-in-out">イーズインアウト</option>
+          </select>
         </div>
       </div>
     );
@@ -374,13 +622,17 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                 }),
                 ...(e.target.value === "bounds" && {
                   bounds: { left: -10, right: 10, top: 10, bottom: -10 },
-                  expressionId: undefined,
                   properties: undefined,
                   animation: undefined,
                 }),
                 ...(e.target.value === "animation" && {
-                  animation: { variable: "", startValue: 0, endValue: 1, duration: 1 },
-                  expressionId: undefined,
+                  animation: {
+                    type: "variable",
+                    targetId: "",
+                    duration: 1,
+                    variable: { name: "", startValue: 0, endValue: 1, autoDetect: false },
+                    easing: "linear",
+                  },
                   properties: undefined,
                   bounds: undefined,
                 }),

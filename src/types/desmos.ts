@@ -177,6 +177,8 @@ export interface Calculator {
   ) => void;
   destroy: () => void;
   resize: () => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  controller: any;
   observeEvent: (event: string, callback: (...args: unknown[]) => void) => void;
   unobserveEvent: (event: string, callback: (...args: unknown[]) => void) => void;
 }

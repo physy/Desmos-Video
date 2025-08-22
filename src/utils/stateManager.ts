@@ -106,7 +106,7 @@ export class StateManager {
     this.applyStateToCalculator(this.initialState, this.computeCalculator);
   }
 
-  // 指定時刻までのイベントを取得
+  // 指定時刻までのイベントを取得（アニメーションの進行状態も考慮）
   private getEventsUpToTime(time: number): Array<UnifiedEvent | StateEvent> {
     const events: Array<UnifiedEvent | StateEvent> = [];
 
@@ -117,15 +117,110 @@ export class StateManager {
       }
     }
 
-    // UnifiedEventsを追加（指定時刻以前）
+    // UnifiedEventsを追加（アニメーションは特別処理）
     for (const event of this.timeline) {
-      if (event.time <= time) {
-        events.push(event);
+      if (event.type === "animation" && event.animation) {
+        // アニメーションイベントは特別処理
+        const animStartTime = event.time;
+        const animEndTime = event.time + event.animation.duration;
+
+        if (time >= animStartTime && time <= animEndTime) {
+          // アニメーション実行中：進行状態を計算して適用
+          const progress = (time - animStartTime) / event.animation.duration;
+          const animationEvent = this.createInterpolatedAnimationEvent(event, progress);
+          events.push(animationEvent);
+        } else if (time > animEndTime) {
+          // アニメーション完了：最終値を適用
+          const animationEvent = this.createInterpolatedAnimationEvent(event, 1.0);
+          events.push(animationEvent);
+        }
+        // time < animStartTime の場合は何もしない（アニメーション未開始）
+      } else {
+        // 通常のイベント
+        if (event.time <= time) {
+          events.push(event);
+        }
       }
     }
 
     // 時系列順にソート
     return events.sort((a, b) => a.time - b.time);
+  }
+
+  // アニメーションの進行状態に基づいて補間されたイベントを作成
+  private createInterpolatedAnimationEvent(
+    originalEvent: UnifiedEvent,
+    progress: number
+  ): UnifiedEvent {
+    if (!originalEvent.animation) return originalEvent;
+
+    const animation = originalEvent.animation;
+    const easedProgress = this.applyEasing(progress, animation.easing || "linear");
+
+    // 補間されたアニメーションイベントを作成
+    const interpolatedEvent: UnifiedEvent = {
+      ...originalEvent,
+      animation: { ...animation },
+    };
+
+    // アニメーションタイプに応じて値を補間
+    if (animation.type === "variable" && animation.variable) {
+      const { startValue, endValue } = animation.variable;
+      const currentValue = startValue + (endValue - startValue) * easedProgress;
+
+      interpolatedEvent.animation = {
+        ...animation,
+        variable: {
+          ...animation.variable,
+          startValue: currentValue,
+          endValue: currentValue, // 現在の値を開始値と終了値の両方に設定
+        },
+      };
+    } else if (animation.type === "property" && animation.property) {
+      const { startValue, endValue } = animation.property;
+      const currentValue = startValue + (endValue - startValue) * easedProgress;
+
+      interpolatedEvent.animation = {
+        ...animation,
+        property: {
+          ...animation.property,
+          startValue: currentValue,
+          endValue: currentValue,
+        },
+      };
+    } else if (animation.type === "action" && animation.action) {
+      // アクションアニメーションの場合は進行状態に応じてステップ数を調整
+      const totalSteps = animation.action.steps;
+      const currentSteps = Math.floor(totalSteps * easedProgress);
+
+      interpolatedEvent.animation = {
+        ...animation,
+        action: {
+          ...animation.action,
+          steps: currentSteps,
+        },
+      };
+    }
+
+    return interpolatedEvent;
+  }
+
+  // イージング関数の適用
+  private applyEasing(
+    progress: number,
+    easing: "linear" | "ease-in" | "ease-out" | "ease-in-out"
+  ): number {
+    switch (easing) {
+      case "ease-in":
+        return progress * progress;
+      case "ease-out":
+        return 1 - (1 - progress) * (1 - progress);
+      case "ease-in-out":
+        return progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+      case "linear":
+      default:
+        return progress;
+    }
   }
 
   // StateEventを計算用calculatorに適用
@@ -191,19 +286,66 @@ export class StateManager {
     }
   }
 
-  // Animation イベントを適用
+  // Animation イベントを適用（補間済みの値を使用）
   private async applyAnimationEvent(event: UnifiedEvent): Promise<void> {
     if (!this.computeCalculator || event.type !== "animation" || !event.animation) return;
 
-    const { variable, endValue } = event.animation;
+    const animation = event.animation;
 
-    // アニメーションの終了値を変数として設定
     try {
-      this.computeCalculator.setExpression({
-        id: `__animation_${variable}`,
-        latex: `${variable} = ${endValue}`,
-      });
-      debugLog(`Applied animation: ${variable} = ${endValue}`);
+      // 変数アニメーションの場合
+      if (animation.type === "variable" && animation.variable) {
+        const { name, startValue } = animation.variable; // 補間済みなので startValue を使用
+        const targetId = animation.targetId;
+
+        if (targetId) {
+          // 自動検出の場合、対象expressionから変数名を取得して値を設定
+          // 実装時にはDesmosから実際のLaTeX式を取得して変数名を抽出する必要がある
+          this.computeCalculator.setExpression({
+            id: targetId,
+            latex: `${
+              this.computeCalculator
+                .getExpressions()
+                .find((expr) => expr.id === targetId)
+                ?.latex?.split("=")[0]
+                .trim() || name
+            } = ${startValue}`,
+          });
+        } else {
+          // 手動指定の場合
+          this.computeCalculator.setExpression({
+            id: `__animation_${name}`,
+            latex: `${name} = ${startValue}`,
+          });
+        }
+        debugLog(`Applied variable animation: ${name} = ${startValue}`);
+      }
+
+      // プロパティアニメーションの場合
+      else if (animation.type === "property" && animation.property) {
+        const { name, startValue } = animation.property; // 補間済みなので startValue を使用
+        const targetId = animation.targetId;
+
+        // 対象expressionのプロパティを更新
+        this.computeCalculator.setExpression({
+          id: targetId,
+          [name]: startValue,
+        });
+        debugLog(`Applied property animation: ${targetId}.${name} = ${startValue}`);
+      }
+
+      // アクションアニメーションの場合
+      else if (animation.type === "action" && animation.action) {
+        const { steps } = animation.action; // 補間済みのステップ数
+        const targetId = animation.targetId;
+
+        // 指定回数アクションを実行
+        for (let i = 0; i < steps; i++) {
+          this.computeCalculator.controller.dispatch({ type: "action-single-step", id: targetId });
+          debugLog(`Action step ${i + 1}/${steps} for ${targetId}`);
+        }
+        debugLog(`Applied action animation: ${targetId} executed ${steps} steps`);
+      }
     } catch (error) {
       debugLog(`Error applying animation:`, error);
     }

@@ -75,7 +75,7 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
 
       const script = document.createElement("script");
       script.src =
-        "https://www.desmos.com/api/v1.11/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6";
+        "https://www.desmos.com/api/v1.11/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6&showIDs=true";
       script.async = true;
       script.onload = () => {
         if (mounted) {

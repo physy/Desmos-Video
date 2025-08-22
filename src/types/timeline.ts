@@ -92,12 +92,35 @@ export interface UnifiedEvent {
     top: number;
     bottom: number;
   };
-  // Animation event properties
+  // Animation event properties - 新しい詳細なアニメーション設定
   animation?: {
-    variable: string;
-    startValue: number;
-    endValue: number;
-    duration: number;
+    type: "variable" | "property" | "action";
+    targetId: string; // 対象のexpression ID
+    duration: number; // アニメーション時間（秒）
+
+    // 変数アニメーション用
+    variable?: {
+      name: string; // 変数名（latexから自動取得も可能）
+      startValue: number;
+      endValue: number;
+      autoDetect?: boolean; // latexから変数名を自動検出するか
+    };
+
+    // プロパティアニメーション用
+    property?: {
+      name: string; // プロパティ名（例: "lineOpacity", "pointSize"など）
+      startValue: number;
+      endValue: number;
+    };
+
+    // アクションアニメーション用
+    action?: {
+      steps: number; // 実行するステップ数
+      frameInterval: number; // 何フレームごとに実行するか
+    };
+
+    // イージング関数
+    easing?: "linear" | "ease-in" | "ease-out" | "ease-in-out";
   };
 }
 

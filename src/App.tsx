@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { DesmosGraph } from "./components/DesmosGraph";
 import { TimelineControls } from "./components/TimelineControls";
 import { UnifiedEventEditPanel } from "./components/UnifiedEventEditPanel";
@@ -14,6 +14,16 @@ import "./App.css";
 const DEBUG_MODE = false;
 
 function App() {
+  // ページロード時に?showIDs=trueを自動追加
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (!url.searchParams.has("showIDs")) {
+        url.searchParams.append("showIDs", "true");
+        window.history.replaceState({}, "", url.toString());
+      }
+    }
+  }, []);
   const [calculator, setCalculator] = useState<Calculator | null>(null);
   const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline" | "graph" | "export">(
     "events"
@@ -21,6 +31,8 @@ function App() {
   const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
   const [videoSettings, setVideoSettings] = useState<VideoExportSettings | null>(null);
   const [graphAspectRatio, setGraphAspectRatio] = useState<number>(16 / 9); // フルHDをデフォルト
+
+  // クエリに showIDs を自動的につける
 
   // 動画解像度に基づいてグラフの縦横比を調整する関数
   const adjustGraphAspectRatio = useCallback(

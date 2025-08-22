@@ -34,7 +34,13 @@ const convertUnifiedEventToTimelineEvent = (unifiedEvent: UnifiedEvent): Timelin
         id: unifiedEvent.id,
         time: unifiedEvent.time,
         action: "startAnimation",
-        args: unifiedEvent.animation || { variable: "", startValue: 0, endValue: 1, duration: 1 },
+        args: unifiedEvent.animation || {
+          type: "variable",
+          targetId: "",
+          duration: 1,
+          variable: { name: "", startValue: 0, endValue: 1, autoDetect: false },
+          easing: "linear",
+        },
       };
     default:
       throw new Error(`Unknown unified event type: ${unifiedEvent.type}`);
@@ -75,10 +81,13 @@ const convertTimelineEventToUnifiedEvent = (timelineEvent: TimelineEvent): Unifi
         time: timelineEvent.time,
         type: "animation",
         animation: timelineEvent.args as {
-          variable: string;
-          startValue: number;
-          endValue: number;
+          type: "variable" | "property" | "action";
+          targetId: string;
           duration: number;
+          variable?: { name: string; startValue: number; endValue: number; autoDetect?: boolean };
+          property?: { name: string; startValue: number; endValue: number };
+          action?: { steps: number; frameInterval: number };
+          easing?: "linear" | "ease-in" | "ease-out" | "ease-in-out";
         },
       };
     default:
