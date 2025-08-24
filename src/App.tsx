@@ -10,6 +10,7 @@ import { useTimeline } from "./hooks/useTimeline";
 import type { Calculator } from "./types/desmos";
 import type { TimelineEvent, VideoExportSettings } from "./types/timeline";
 import "./App.css";
+import { StateEventEditPanel } from "./components/StateEventEditPanel";
 
 // デバッグモードのフラグ（開発時に true にする）
 const DEBUG_MODE = false;
@@ -29,7 +30,9 @@ function App() {
   const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline" | "graph" | "export">(
     "events"
   );
-  const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<
+    TimelineEvent | StateEvent | { type: "initial" } | null
+  >(null);
   const [videoSettings, setVideoSettings] = useState<VideoExportSettings | null>(null);
   const [graphAspectRatio, setGraphAspectRatio] = useState<number>(16 / 9); // フルHDをデフォルト
 
@@ -118,7 +121,6 @@ function App() {
     updateUnifiedEvent,
     getUnifiedEvent,
     captureCurrentState,
-    updateInitialState,
     clearCache,
     getDebugInfo,
     getDebugAtTime,
@@ -151,31 +153,23 @@ function App() {
     [setProject]
   );
 
-  const handleCalculatorReady = useCallback(
-    (calc: Calculator) => {
-      setCalculator(calc);
+  const handleCalculatorReady = useCallback((calc: Calculator) => {
+    setCalculator(calc);
 
-      // デモ用の初期設定
-      calc.setExpression({
-        id: "demo1",
-        latex: "y = \\sin(x)",
-        color: "#2563eb",
-      });
+    // デモ用の初期設定
+    calc.setExpression({
+      id: "demo1",
+      latex: "y = \\sin(x)",
+      color: "#2563eb",
+    });
 
-      calc.setExpression({
-        id: "demo2",
-        latex: "y = \\cos(x)",
-        color: "#dc2626",
-        hidden: true,
-      });
-
-      // 初期stateを設定（calculator準備後）
-      setTimeout(() => {
-        updateInitialState();
-      }, 100);
-    },
-    [updateInitialState]
-  );
+    calc.setExpression({
+      id: "demo2",
+      latex: "y = \\cos(x)",
+      color: "#dc2626",
+      hidden: true,
+    });
+  }, []);
 
   const addDemoEvents = useCallback(() => {
     // デモイベントを追加
@@ -263,13 +257,6 @@ function App() {
               title="現在時刻でチェックポイント作成"
             >
               チェックポイント
-            </button>
-            <button
-              onClick={updateInitialState}
-              className="px-2 py-1 bg-orange-600 text-white text-xs rounded hover:bg-orange-700"
-              title="現在のstateを初期stateに設定"
-            >
-              初期state更新
             </button>
             <button
               onClick={clearCache}
@@ -410,35 +397,52 @@ function App() {
                   {/* タブコンテンツ */}
                   <div className="p-3 flex-1 overflow-auto min-h-0 relative">
                     {activeTab === "state" && (
-                      <div className="h-full">
-                        {calculator && (
-                          <div className="space-y-3 h-full">
-                            {/* Stateキャプチャボタン */}
-                            <button
-                              onClick={() =>
-                                captureCurrentState(`Manual capture at ${currentTime.toFixed(1)}s`)
-                              }
-                              className="sticky t-0 w-full px-3 py-2 bg-green-500 text-white text-xs rounded hover:bg-green-600"
-                            >
-                              現在の State をキャプチャ
-                            </button>
-                            {/* 状態のJSON表示 */}
-                            <div className="">
-                              <div className=" bg-gray-50 border rounded p-2 text-xs font-mono overflow-auto">
-                                <pre>
-                                  {JSON.stringify(
-                                    {
-                                      expressions: calculator.getExpressions(),
-                                      bounds: calculator.graphpaperBounds?.mathCoordinates,
-                                      viewport: calculator.graphpaperBounds?.pixelCoordinates,
-                                    },
-                                    null,
-                                    2
-                                  )}
-                                </pre>
-                              </div>
-                            </div>
-                          </div>
+                      <div className="h-full flex flex-col">
+                        {/* 1. state選択中 */}
+                        {selectedEvent &&
+                        typeof selectedEvent === "object" &&
+                        "id" in selectedEvent ? (
+                          <StateEventEditPanel
+                            selectedState={
+                              project.stateEvents.find((s) => s.id === selectedEvent.id) || null
+                            }
+                            calculator={calculator}
+                            currentTime={currentTime}
+                            onStateUpdate={(state) => {
+                              setProject((prev) => ({
+                                ...prev,
+                                stateEvents: prev.stateEvents.map((s) =>
+                                  s.id === state.id ? { ...s, ...state } : s
+                                ),
+                              }));
+                              setSelectedEvent(state);
+                            }}
+                            onStateDelete={() => {
+                              setProject((prev) => ({
+                                ...prev,
+                                stateEvents: prev.stateEvents.filter(
+                                  (s) => s.id !== selectedEvent.id
+                                ),
+                              }));
+                              setSelectedEvent(null);
+                            }}
+                            onDeselect={() => setSelectedEvent(null)}
+                          />
+                        ) : (
+                          /* 3. 何も選択していない: 新規state挿入 */
+                          <StateEventEditPanel
+                            selectedState={null}
+                            calculator={calculator}
+                            currentTime={currentTime}
+                            onStateUpdate={(state) => {
+                              setProject((prev) => ({
+                                ...prev,
+                                stateEvents: [...prev.stateEvents, state],
+                              }));
+                              setSelectedEvent(state);
+                            }}
+                            onDeselect={() => setSelectedEvent(null)}
+                          />
                         )}
                       </div>
                     )}
@@ -447,11 +451,20 @@ function App() {
                       <div className="h-full">
                         <UnifiedEventEditPanel
                           selectedEvent={
-                            selectedEvent ? getUnifiedEvent(selectedEvent.id || "") : null
+                            selectedEvent &&
+                            typeof selectedEvent === "object" &&
+                            "id" in selectedEvent
+                              ? getUnifiedEvent(selectedEvent.id || "")
+                              : null
                           }
                           onEventUpdate={updateUnifiedEvent}
                           onEventDelete={() => {
-                            if (selectedEvent?.id) {
+                            if (
+                              selectedEvent &&
+                              typeof selectedEvent === "object" &&
+                              "id" in selectedEvent &&
+                              typeof selectedEvent.id === "string"
+                            ) {
                               removeEvent(selectedEvent.id);
                               setSelectedEvent(null);
                             }
@@ -555,18 +568,31 @@ function App() {
                 onInsertEvent={(time, event) => insertEvent({ ...event, time })}
                 onInsertState={(time) => captureCurrentState(`State at ${time.toFixed(1)}s`)}
                 onEventSelect={setSelectedEvent}
+                onStateSelect={(state) => {
+                  setSelectedEvent(state);
+                }}
                 onEventTimeChange={handleEventTimeChange}
                 onStateTimeChange={handleStateTimeChange}
                 onEventDelete={(eventId) => {
+                  if (
+                    selectedEvent &&
+                    typeof selectedEvent === "object" &&
+                    "id" in selectedEvent &&
+                    selectedEvent.id === eventId
+                  )
+                    setSelectedEvent(null);
                   removeEvent(eventId);
-                  if (selectedEvent?.id === eventId) setSelectedEvent(null);
                 }}
                 onEventDuplicate={(event) => {
                   // 新しいIDと時刻+0.1で複製
                   const newEvent = { ...event, id: undefined, time: event.time + 0.1 };
                   insertEvent(newEvent);
                 }}
-                selectedEventId={selectedEvent?.id}
+                selectedEventId={
+                  selectedEvent && typeof selectedEvent === "object" && "id" in selectedEvent
+                    ? selectedEvent.id
+                    : undefined
+                }
               />
             </div>
           </div>

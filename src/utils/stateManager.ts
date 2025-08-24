@@ -1,3 +1,24 @@
+// 空のDesmosStateを返すユーティリティ
+export function getBlankDesmosState(): DesmosState {
+  return {
+    version: 1,
+    randomSeed: "",
+    graph: {
+      viewport: {
+        xmin: -10,
+        ymin: -10,
+        xmax: 10,
+        ymax: 10,
+      },
+      showGrid: true,
+      showXAxis: true,
+      showYAxis: true,
+    },
+    expressions: {
+      list: [],
+    },
+  };
+}
 import type { Calculator, DesmosState } from "../types/desmos";
 import type { StateEvent, ContinuousEvent, UnifiedEvent } from "../types/timeline";
 import { deepCopy } from "./deepCopy";
@@ -13,7 +34,7 @@ const debugLog = (...args: unknown[]) => {
 };
 
 export class StateManager {
-  private initialState: DesmosState;
+  // initialState削除
   private timeline: UnifiedEvent[];
   private stateEvents: StateEvent[];
   private continuousEvents: ContinuousEvent[];
@@ -25,12 +46,10 @@ export class StateManager {
   private stateCache: Map<number, DesmosState> = new Map();
 
   constructor(
-    initialState: DesmosState,
     timeline: UnifiedEvent[] = [],
     stateEvents: StateEvent[] = [],
     continuousEvents: ContinuousEvent[] = []
   ) {
-    this.initialState = deepCopy(initialState);
     this.timeline = [...timeline].sort((a, b) => a.time - b.time);
     this.stateEvents = [...stateEvents].sort((a, b) => a.time - b.time);
     this.continuousEvents = continuousEvents;
@@ -101,9 +120,10 @@ export class StateManager {
   private async resetComputeCalculatorToInitialState(): Promise<void> {
     if (!this.computeCalculator) return;
 
-    debugLog("Resetting compute calculator to initial state");
-    // 初期状態を適用
-    this.applyStateToCalculator(this.initialState, this.computeCalculator);
+    debugLog("Resetting compute calculator to blank state");
+    if (this.computeCalculator) {
+      this.computeCalculator.setState(getBlankDesmosState());
+    }
   }
 
   // 指定時刻までのイベントを取得（アニメーションの進行状態も考慮）
@@ -462,12 +482,7 @@ export class StateManager {
     debugLog("Cache cleared");
   }
 
-  // 初期状態を更新
-  updateInitialState(initialState: DesmosState): void {
-    this.initialState = deepCopy(initialState);
-    this.clearCache();
-    debugLog("Initial state updated");
-  }
+  // 初期状態更新機能は廃止
 
   // タイムラインを取得
   getTimeline(): UnifiedEvent[] {
@@ -546,12 +561,11 @@ export class StateManager {
 let stateManagerInstance: StateManager | null = null;
 
 export function createStateManager(
-  initialState: DesmosState,
   timeline: UnifiedEvent[] = [],
   stateEvents: StateEvent[] = [],
   continuousEvents: ContinuousEvent[] = []
 ): StateManager {
-  stateManagerInstance = new StateManager(initialState, timeline, stateEvents, continuousEvents);
+  stateManagerInstance = new StateManager(timeline, stateEvents, continuousEvents);
   return stateManagerInstance;
 }
 

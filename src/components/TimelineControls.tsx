@@ -9,6 +9,7 @@ interface EventWithTrack extends TimelineEvent {
 }
 
 interface TimelineControlsProps {
+  onStateSelect?: (state: StateEvent) => void;
   currentTime: number;
   duration: number;
   isPlaying: boolean;
@@ -46,6 +47,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   onEventDelete,
   onEventDuplicate,
   selectedEventId,
+  onStateSelect,
 }) => {
   const [showInsertMenu, setShowInsertMenu] = useState(false);
   const [insertTime] = useState(0);
@@ -566,28 +568,6 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   </div>
                 </>
               )}
-              {/* 初期状態マーカー（時刻0） */}
-              <div className="absolute z-30" style={{ left: "0%", top: "0px" }}>
-                <div
-                  className="w-4 h-8 bg-purple-500 rounded-sm transform -translate-x-1/2 relative border border-purple-400 shadow-sm cursor-pointer hover:bg-purple-400 transition-colors group"
-                  onClick={() => onSeek(0)}
-                  title="Initial State"
-                >
-                  {/* 初期状態のツールチップ */}
-                  <div
-                    className="absolute bottom-full mb-2 left-0 bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none max-w-xs"
-                    style={{ zIndex: 10000 }}
-                  >
-                    <div className="font-medium text-purple-300">Initial State</div>
-                    <div className="text-gray-300">時刻: 0.0s</div>
-                    <div className="text-xs text-blue-300 mt-1 font-medium">クリックでシーク</div>
-                    {/* ツールチップの矢印 */}
-                    <div className="absolute top-full left-4">
-                      <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
               {/* StateEventマーカー（ドラッグ対応） */}
               {stateEvents.map((stateEvent, index) => {
                 const position = (stateEvent.time / duration) * 100 * zoom;
@@ -596,6 +576,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   dragState.type === "state" &&
                   dragState.stateId === stateEvent.id &&
                   dragState.isDragging;
+                const isSelected = selectedEventId === stateEvent.id;
                 return (
                   <div
                     key={stateEvent.id || `state-${index}`}
@@ -605,8 +586,11 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                     <div
                       className={`w-4 h-8 bg-green-500 rounded-sm transform -translate-x-1/2 relative border border-green-400 shadow-sm cursor-pointer hover:bg-green-400 transition-colors group ${
                         isDragging ? "cursor-move opacity-80" : ""
-                      }`}
-                      onClick={() => onSeek(stateEvent.time)}
+                      } ${isSelected ? "ring-4 ring-blue-400 border-2 border-blue-500" : ""}`}
+                      onClick={() => {
+                        onSeek(stateEvent.time);
+                        if (onStateSelect) onStateSelect(stateEvent);
+                      }}
                       onMouseDown={(e) => handleStateMouseDown(stateEvent, e)}
                       title={`State Event at ${formatTime(stateEvent.time)}`}
                     >
@@ -684,10 +668,6 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
           </div>
           <div className="flex items-center space-x-4">
             {/* 凡例 */}
-            <div className="flex items-center space-x-1">
-              <div className="w-3 h-3 bg-purple-500 rounded-sm border border-purple-400"></div>
-              <span>Initial</span>
-            </div>
             <div className="flex items-center space-x-1">
               <div className="w-3 h-3 bg-emerald-500 rounded-sm border border-emerald-400"></div>
               <span>State</span>

@@ -4,7 +4,6 @@ import type { UnifiedEvent, StateEvent } from "../types/timeline";
 import { StateManager, createStateManager } from "../utils/stateManager";
 
 interface UseStateManagerOptions {
-  initialState: DesmosState;
   displayCalculator: Calculator | null;
   autoCreateComputeCalculator?: boolean;
 }
@@ -29,7 +28,6 @@ interface UseStateManagerReturn {
 }
 
 export function useStateManager({
-  initialState,
   displayCalculator,
   autoCreateComputeCalculator = true,
 }: UseStateManagerOptions): UseStateManagerReturn {
@@ -77,10 +75,10 @@ export function useStateManager({
   // StateManagerを初期化
   useEffect(() => {
     if (!stateManagerRef.current) {
-      stateManagerRef.current = createStateManager(initialState);
+      stateManagerRef.current = createStateManager();
       console.log("[useStateManager] StateManager created");
     }
-  }, [initialState]);
+  }, []);
 
   // 計算用calculatorを作成・設定（Desmosライブラリが準備できてから）
   useEffect(() => {

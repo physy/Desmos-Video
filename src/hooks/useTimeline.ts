@@ -168,7 +168,6 @@ export const useTimeline = (calculator: Calculator | null) => {
     debugStateCalculation,
     getDebugInfo: getStateManagerDebugInfo,
   } = useStateManager({
-    initialState: project.initialState,
     displayCalculator: calculator,
     autoCreateComputeCalculator: true,
   });
@@ -447,21 +446,6 @@ export const useTimeline = (calculator: Calculator | null) => {
     [addEventToStateManager]
   );
 
-  // 初期stateを更新
-  const updateInitialState = useCallback(() => {
-    if (!calculator) return;
-
-    // calculatorから実際のDesmosStateを取得
-    const currentState = calculator.getState();
-
-    setProject((prev) => ({
-      ...prev,
-      initialState: currentState,
-    }));
-
-    console.log("[useTimeline] Initial state updated", currentState);
-  }, [calculator]);
-
   // UnifiedEventを更新する機能
   const updateUnifiedEvent = useCallback((unifiedEvent: UnifiedEvent) => {
     console.log("[useTimeline] Updating UnifiedEvent:", unifiedEvent);
@@ -533,7 +517,6 @@ export const useTimeline = (calculator: Calculator | null) => {
     captureCurrentState,
     addContinuousEvent,
     removeEvent,
-    updateInitialState,
     clearCache,
     getDebugInfo,
     getDebugAtTime,
