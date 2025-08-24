@@ -44,7 +44,7 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
     } else if (calculator) {
       setEditingState(null);
       setEditingStateJson(JSON.stringify(calculator.getState(), null, 2));
-      setHasUnsavedChanges(false);
+      setHasUnsavedChanges(true); // 新規State挿入時はtrueに
       setIsJsonValid(true);
     }
   }, [selectedState, calculator]);
