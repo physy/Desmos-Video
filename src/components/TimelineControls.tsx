@@ -21,7 +21,8 @@ interface TimelineControlsProps {
   onInsertEvent?: (time: number, event: Omit<TimelineEvent, "id" | "time">) => void;
   onInsertState?: (time: number) => void;
   onEventSelect?: (event: TimelineEvent) => void;
-  onEventTimeChange?: (eventId: string, newTime: number) => void; // ドラッグ時の時間変更
+  onEventTimeChange?: (eventId: string, newTime: number) => void; // イベントの時間変更
+  onStateTimeChange?: (stateId: string, newTime: number) => void; // Stateの時間変更
   onEventDelete: (eventId: string) => void;
   onEventDuplicate: (event: TimelineEvent) => void;
   selectedEventId?: string;
@@ -41,6 +42,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   onInsertState,
   onEventSelect,
   onEventTimeChange,
+  onStateTimeChange,
   onEventDelete,
   onEventDuplicate,
   selectedEventId,
@@ -48,10 +50,12 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   const [showInsertMenu, setShowInsertMenu] = useState(false);
   const [insertTime] = useState(0);
   const [dragState, setDragState] = useState<{
-    eventId: string;
+    eventId?: string;
+    stateId?: string;
     startX: number;
     startTime: number;
     isDragging: boolean;
+    type: "event" | "state";
   } | null>(null);
   // 右クリックメニュー
   const [contextMenu, setContextMenu] = useState<{
@@ -62,16 +66,29 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   // ズーム倍率（1=100%、2=200%...）
   const [zoom, setZoom] = useState(1);
 
-  // ドラッグハンドラー
+  // ドラッグハンドラー（イベント用）
   const handleMouseDown = React.useCallback((event: TimelineEvent, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!event.id) return;
-
     setDragState({
       eventId: event.id,
       startX: e.clientX,
       startTime: event.time,
       isDragging: false,
+      type: "event",
+    });
+  }, []);
+
+  // ドラッグハンドラー（StateEvent用）
+  const handleStateMouseDown = React.useCallback((stateEvent: StateEvent, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!stateEvent.id) return;
+    setDragState({
+      stateId: stateEvent.id,
+      startX: e.clientX,
+      startTime: stateEvent.time,
+      isDragging: false,
+      type: "state",
     });
   }, []);
 
@@ -91,11 +108,16 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
         setDragState((prev) => (prev ? { ...prev, isDragging: true } : null));
       }
 
-      if (dragState.isDragging && onEventTimeChange) {
-        onEventTimeChange(dragState.eventId, newTime);
+      if (dragState.isDragging) {
+        if (dragState.type === "event" && dragState.eventId && onEventTimeChange) {
+          onEventTimeChange(dragState.eventId, newTime);
+        }
+        if (dragState.type === "state" && dragState.stateId && onStateTimeChange) {
+          onStateTimeChange(dragState.stateId, newTime);
+        }
       }
     },
-    [dragState, duration, onEventTimeChange, zoom]
+    [dragState, duration, onEventTimeChange, onStateTimeChange, zoom]
   );
 
   const handleMouseUp = React.useCallback(() => {
@@ -566,9 +588,14 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   </div>
                 </div>
               </div>
-              {/* StateEventマーカー */}
+              {/* StateEventマーカー（ドラッグ対応） */}
               {stateEvents.map((stateEvent, index) => {
                 const position = (stateEvent.time / duration) * 100 * zoom;
+                const isDragging =
+                  dragState &&
+                  dragState.type === "state" &&
+                  dragState.stateId === stateEvent.id &&
+                  dragState.isDragging;
                 return (
                   <div
                     key={stateEvent.id || `state-${index}`}
@@ -576,8 +603,11 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                     style={{ left: `${position}%`, top: "0px" }}
                   >
                     <div
-                      className="w-4 h-8 bg-green-500 rounded-sm transform -translate-x-1/2 relative border border-green-400 shadow-sm cursor-pointer hover:bg-green-400 transition-colors group"
+                      className={`w-4 h-8 bg-green-500 rounded-sm transform -translate-x-1/2 relative border border-green-400 shadow-sm cursor-pointer hover:bg-green-400 transition-colors group ${
+                        isDragging ? "cursor-move opacity-80" : ""
+                      }`}
                       onClick={() => onSeek(stateEvent.time)}
+                      onMouseDown={(e) => handleStateMouseDown(stateEvent, e)}
                       title={`State Event at ${formatTime(stateEvent.time)}`}
                     >
                       {/* StateEventのツールチップ */}

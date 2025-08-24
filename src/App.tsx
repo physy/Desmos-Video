@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { DesmosGraph } from "./components/DesmosGraph";
 import { TimelineControls } from "./components/TimelineControls";
+import type { StateEvent } from "./types/timeline";
 import { UnifiedEventEditPanel } from "./components/UnifiedEventEditPanel";
 import { GraphConfigPanel } from "./components/GraphConfigPanel";
 import { VideoExportPanel } from "./components/VideoExportPanel";
@@ -121,6 +122,7 @@ function App() {
     clearCache,
     getDebugInfo,
     getDebugAtTime,
+    setProject,
   } = useTimeline(calculator);
 
   // イベント時間変更ハンドラー（ドラッグ対応）
@@ -133,6 +135,20 @@ function App() {
       }
     },
     [project.timeline, updateEvent]
+  );
+
+  // StateEvent時間変更ハンドラー（ドラッグ対応）
+  const handleStateTimeChange = useCallback(
+    (stateId: string, newTime: number) => {
+      setProject((prev: typeof project) => ({
+        ...prev,
+        stateEvents: prev.stateEvents
+          .map((state: StateEvent) => (state.id === stateId ? { ...state, time: newTime } : state))
+          .sort((a: StateEvent, b: StateEvent) => a.time - b.time),
+      }));
+      console.log(`Moved state ${stateId} to time ${newTime.toFixed(3)}s`);
+    },
+    [setProject]
   );
 
   const handleCalculatorReady = useCallback(
@@ -540,6 +556,7 @@ function App() {
                 onInsertState={(time) => captureCurrentState(`State at ${time.toFixed(1)}s`)}
                 onEventSelect={setSelectedEvent}
                 onEventTimeChange={handleEventTimeChange}
+                onStateTimeChange={handleStateTimeChange}
                 onEventDelete={(eventId) => {
                   removeEvent(eventId);
                   if (selectedEvent?.id === eventId) setSelectedEvent(null);
