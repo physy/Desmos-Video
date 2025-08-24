@@ -22,6 +22,8 @@ interface TimelineControlsProps {
   onInsertState?: (time: number) => void;
   onEventSelect?: (event: TimelineEvent) => void;
   onEventTimeChange?: (eventId: string, newTime: number) => void; // ドラッグ時の時間変更
+  onEventDelete: (eventId: string) => void;
+  onEventDuplicate: (event: TimelineEvent) => void;
   selectedEventId?: string;
 }
 
@@ -39,6 +41,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   onInsertState,
   onEventSelect,
   onEventTimeChange,
+  onEventDelete,
+  onEventDuplicate,
   selectedEventId,
 }) => {
   const [showInsertMenu, setShowInsertMenu] = useState(false);
@@ -49,6 +53,14 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     startTime: number;
     isDragging: boolean;
   } | null>(null);
+  // 右クリックメニュー
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    event: TimelineEvent | null;
+  } | null>(null);
+  // ズーム倍率（1=100%、2=200%...）
+  const [zoom, setZoom] = useState(1);
 
   // ドラッグハンドラー
   const handleMouseDown = React.useCallback((event: TimelineEvent, e: React.MouseEvent) => {
@@ -72,7 +84,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
       if (!timelineElement) return;
 
       const timelineWidth = timelineElement.getBoundingClientRect().width;
-      const deltaTime = (deltaX / timelineWidth) * duration;
+      const deltaTime = ((deltaX / timelineWidth) * duration) / zoom ** 2;
       const newTime = Math.max(0, Math.min(duration, dragState.startTime + deltaTime));
 
       if (!dragState.isDragging && Math.abs(deltaX) > 5) {
@@ -83,7 +95,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
         onEventTimeChange(dragState.eventId, newTime);
       }
     },
-    [dragState, duration, onEventTimeChange]
+    [dragState, duration, onEventTimeChange, zoom]
   );
 
   const handleMouseUp = React.useCallback(() => {
@@ -135,11 +147,12 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
         tracks.push([]);
       }
 
+      // left/widthをズーム倍率で補正
       const eventWithTrack: EventWithTrack = {
         ...event,
         track: trackIndex,
-        width: (eventDuration / duration) * 100,
-        left: (event.time / duration) * 100,
+        width: (eventDuration / duration) * 100 * zoom,
+        left: (event.time / duration) * 100 * zoom,
       };
 
       tracks[trackIndex].push(eventWithTrack);
@@ -147,7 +160,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     });
 
     return { events: result, trackCount: tracks.length };
-  }, [timeline, duration]);
+  }, [timeline, duration, zoom]);
 
   // イベントタイプに応じた色を取得
   const getEventColor = (action: string): string => {
@@ -173,28 +186,25 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
+    // ドラッグと同じ計算式: (clickX / timelineWidth) * duration / zoom
     const timelineWidth = rect.width;
-    const clickTime = (clickX / timelineWidth) * duration;
-
-    // 通常のクリックはシーク
-    onSeek(clickTime);
+    const clickTime = ((clickX / timelineWidth) * duration) / zoom;
+    onSeek(Math.max(0, Math.min(duration, clickTime)));
   };
 
   const handleTimelineDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
+    // ドラッグと同じ計算式: (clickX / timelineWidth) * duration / zoom
     const timelineWidth = rect.width;
-    const clickTime = (clickX / timelineWidth) * duration;
-
-    // ダブルクリックでデフォルトの式イベントを挿入
+    const clickTime = ((clickX / timelineWidth) * duration) / zoom;
     if (onInsertEvent) {
-      onInsertEvent(clickTime, {
+      onInsertEvent(Math.max(0, Math.min(duration, clickTime)), {
         action: "setExpression",
         args: {
           id: "",
         },
       });
-
       console.log(`Created expression event at time ${clickTime.toFixed(2)}s`);
     }
   };
@@ -296,36 +306,66 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
 
       {/* メインタイムライン */}
       <div className="flex flex-col flex-1 min-h-0 px-4 py-2">
-        <div className="flex-1 relative bg-gray-900 rounded-lg px-4 py-2 flex flex-col">
-          {/* 時間軸の目盛り */}
-          <div className="relative mb-4 flex-shrink-0">
-            {/* 目盛り線とラベル */}
-            <div className="relative h-3">
-              {timeMarks.map((mark, index) => (
-                <div
-                  key={index}
-                  className="absolute flex flex-col items-center"
-                  style={{ left: `${mark.position}%`, transform: "translateX(-50%)" }}
-                >
-                  {/* 目盛り線 */}
-                  <div className="w-px h-2 bg-gray-500"></div>
-                  {/* 時間ラベル */}
-                  <span className="text-xs text-gray-400 mt-1">
-                    {mark.time === Math.floor(mark.time)
-                      ? `${mark.time}`
-                      : `${mark.time.toFixed(1)}`}
-                  </span>
-                </div>
-              ))}
+        {/* ズームコントロール（背景のみ強化） */}
+        <div className="relative flex items-center mb-2" style={{ height: 32 }}>
+          <span className="text-xs text-gray-400 relative z-10 ml-2">ズーム</span>
+          <div className="relative mx-2" style={{ width: 128 }}>
+            {/* 背景軸と両端ラベル（スライダー幅に合わせる） */}
+            <div
+              className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-2 pointer-events-none"
+              style={{ width: "100%" }}
+            >
+              <div className="w-full h-1 bg-gray-700 rounded-full" />
             </div>
+            <input
+              type="range"
+              min={1}
+              max={5}
+              step={0.1}
+              value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
+              className="w-full bg-transparent appearance-none cursor-pointer relative z-10"
+              style={{ accentColor: "#6366f1" }}
+            />
           </div>
-
-          {/* 多層イベントトラック */}
-          <div className="timeline-container relative overflow-auto flex-1 min-h-0">
-            <div className="relative h-full">
+          <span className="text-xs text-gray-300 relative z-10">{(zoom * 100).toFixed(0)}%</span>
+        </div>
+        {/* タイムラインと時間軸を一体化したスクロールコンテナ */}
+        <div className="flex-1 relative bg-gray-900 rounded-lg px-4 py-2 flex flex-col">
+          <div
+            className="timeline-container relative overflow-x-auto flex-1 min-h-0 custom-scrollbar px-4"
+            style={{ width: "100%", minWidth: 0 }}
+          >
+            {/* 時間軸の目盛り（ズームに合わせて拡大） */}
+            <div
+              className="relative mb-4 flex-shrink-0"
+              style={{ width: `${zoom * 100}%`, minWidth: "100%" }}
+            >
+              <div className="relative h-3">
+                {timeMarks.map((mark, index) => (
+                  <div
+                    key={index}
+                    className="absolute flex flex-col items-center"
+                    style={{ left: `${mark.position * zoom}%`, transform: "translateX(-50%)" }}
+                  >
+                    {/* 目盛り線 */}
+                    <div className="w-px h-2 bg-gray-500"></div>
+                    {/* 時間ラベル */}
+                    <span className="text-xs text-gray-400 mt-1">
+                      {mark.time === Math.floor(mark.time)
+                        ? `${mark.time}`
+                        : `${mark.time.toFixed(1)}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* 多層イベントトラック */}
+            <div className="relative h-full" style={{ width: `${zoom * 100}%`, minWidth: "100%" }}>
               {/* メインのタイムライン軸（背景） */}
               <div
-                className="absolute top-0 left-0 w-full h-8 bg-gray-700 rounded cursor-pointer z-10"
+                className="absolute top-0 left-0 h-8 bg-gray-700 rounded cursor-pointer z-10"
+                style={{ width: "100%" }}
                 onClick={handleTimelineClick}
                 onDoubleClick={handleTimelineDoubleClick}
                 title="クリックでシーク、ダブルクリックでイベント挿入"
@@ -334,7 +374,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 <div
                   className="absolute top-0 w-1 h-full bg-white rounded shadow-lg z-50"
                   style={{
-                    left: `${(currentTime / duration) * 100}%`,
+                    left: `${(currentTime / duration) * 100 * zoom}%`,
                     transform: "translateX(-50%)",
                   }}
                 ></div>
@@ -342,14 +382,14 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 {/* 再生済み部分 */}
                 <div
                   className="absolute top-0 left-0 h-full bg-blue-500 rounded opacity-30"
-                  style={{ width: `${(currentTime / duration) * 100}%` }}
+                  style={{ width: `${(currentTime / duration) * 100 * zoom}%` }}
                 ></div>
               </div>
-
               {/* 計算済み領域の表示（背景バー） */}
               {calculatedRegions.map((region, index) => {
-                const startPos = (region.start / duration) * 100;
-                const endPos = region.end === Infinity ? 100 : (region.end / duration) * 100;
+                const startPos = (region.start / duration) * 100 * zoom;
+                const endPos =
+                  region.end === Infinity ? 100 * zoom : (region.end / duration) * 100 * zoom;
                 const width = endPos - startPos;
                 return (
                   <div
@@ -367,7 +407,6 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   ></div>
                 );
               })}
-
               {/* イベントトラック */}
               {eventsWithTracks.events.map((event, index) => (
                 <div
@@ -399,6 +438,14 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                     } else {
                       onSeek(event.time);
                     }
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      event,
+                    });
                   }}
                   title={`${event.action} at ${event.time.toFixed(2)}s (ドラッグで移動可能)`}
                 >
@@ -434,7 +481,69 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   </div>
                 </div>
               ))}
-
+              {/* 右クリックメニュー: オーバーレイでラップし、メニュー以外クリックで閉じる */}
+              {contextMenu && contextMenu.event && (
+                <>
+                  <div
+                    className="fixed inset-0 z-[99998]"
+                    style={{ background: "transparent" }}
+                    onClick={() => setContextMenu(null)}
+                  />
+                  <div
+                    className="fixed bg-gray-900 text-white rounded-lg shadow-xl border border-gray-700"
+                    style={{
+                      left: (() => {
+                        const menuWidth = 180;
+                        const winWidth = window.innerWidth;
+                        return Math.min(contextMenu.x, winWidth - menuWidth - 8);
+                      })(),
+                      top: (() => {
+                        const menuHeight = 140;
+                        // 必ず上方向に表示（下にinput rangeがあるため）
+                        return Math.max(contextMenu.y - menuHeight - 8, 8);
+                      })(),
+                      minWidth: 180,
+                      zIndex: 99999,
+                      boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
+                    }}
+                  >
+                    <div className="py-2">
+                      <button
+                        className="block w-full text-left px-5 py-3 text-sm font-medium rounded-lg hover:bg-gray-700 hover:text-blue-200 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setContextMenu(null);
+                          if (onEventSelect && contextMenu.event) onEventSelect(contextMenu.event);
+                        }}
+                      >
+                        編集
+                      </button>
+                      <button
+                        className="block w-full text-left px-5 py-3 text-sm font-medium rounded-lg hover:bg-gray-700 hover:text-green-200 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setContextMenu(null);
+                          if (onEventDuplicate && contextMenu.event)
+                            onEventDuplicate(contextMenu.event);
+                        }}
+                      >
+                        複製
+                      </button>
+                      <button
+                        className="block w-full text-left px-5 py-3 text-sm font-medium rounded-lg hover:bg-gray-700 hover:text-red-300 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setContextMenu(null);
+                          if (onEventDelete && contextMenu.event?.id)
+                            onEventDelete(contextMenu.event.id);
+                        }}
+                      >
+                        削除
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
               {/* 初期状態マーカー（時刻0） */}
               <div className="absolute z-30" style={{ left: "0%", top: "0px" }}>
                 <div
@@ -457,10 +566,9 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   </div>
                 </div>
               </div>
-
               {/* StateEventマーカー */}
               {stateEvents.map((stateEvent, index) => {
-                const position = (stateEvent.time / duration) * 100;
+                const position = (stateEvent.time / duration) * 100 * zoom;
                 return (
                   <div
                     key={stateEvent.id || `state-${index}`}
@@ -507,8 +615,21 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
             </div>
           </div>
 
-          {/* インタラクティブスライダー */}
-          <div className="relative flex-shrink-0">
+          {/* インタラクティブスライダー（UI改善） */}
+          <div className="relative flex-shrink-0 mt-4 mb-2">
+            {/* 軸と目盛り */}
+            <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-2 pointer-events-none">
+              <div className="w-full h-1 bg-gray-700 rounded-full" />
+              {/* 目盛りラベル */}
+              <div
+                className="absolute w-full flex justify-between text-xs text-gray-400 font-mono px-1"
+                style={{ top: 12 }}
+              >
+                <span>0:00</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+            </div>
+            {/* スライダー本体 */}
             <input
               type="range"
               min={0}
@@ -516,10 +637,10 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
               step={0.1}
               value={currentTime}
               onChange={handleSliderChange}
-              className="timeline-slider w-full bg-transparent appearance-none cursor-pointer"
+              className="w-full h-6 bg-transparent appearance-none cursor-pointer relative z-10"
               style={{
-                position: "relative",
-                zIndex: 10,
+                WebkitAppearance: "none",
+                background: "transparent",
               }}
             />
           </div>
@@ -619,6 +740,25 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
           </div>
         </div>
       )}
+      {/* スクロールバーのカスタムスタイル */}
+      <style>{`
+      .custom-scrollbar::-webkit-scrollbar {
+        height: 8px;
+        background: #222;
+        border-radius: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #6366f1;
+        border-radius: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #4f46e5;
+      }
+      .custom-scrollbar {
+        scrollbar-color: #6366f1 #222;
+        scrollbar-width: thin;
+      }
+    `}</style>
     </div>
   );
 };

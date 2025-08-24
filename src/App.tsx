@@ -540,6 +540,15 @@ function App() {
                 onInsertState={(time) => captureCurrentState(`State at ${time.toFixed(1)}s`)}
                 onEventSelect={setSelectedEvent}
                 onEventTimeChange={handleEventTimeChange}
+                onEventDelete={(eventId) => {
+                  removeEvent(eventId);
+                  if (selectedEvent?.id === eventId) setSelectedEvent(null);
+                }}
+                onEventDuplicate={(event) => {
+                  // 新しいIDと時刻+0.1で複製
+                  const newEvent = { ...event, id: undefined, time: event.time + 0.1 };
+                  insertEvent(newEvent);
+                }}
                 selectedEventId={selectedEvent?.id}
               />
             </div>
