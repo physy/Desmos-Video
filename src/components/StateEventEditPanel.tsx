@@ -34,6 +34,58 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
   // 新規State挿入用（editingStateがnullの場合も）
   const isNewState = !selectedState;
   const [newStateTime, setNewStateTime] = useState<number>(currentTime ?? 0);
+  // calculatorの変更を既存StateのJSON textareaにも即時反映（setStateは呼ばない）
+  const [isSyncFromCalculator, setIsSyncFromCalculator] = useState(false);
+
+  // Desmos APIのchangeイベントでcalculator編集→JSON反映
+  useEffect(() => {
+    if (!selectedState && calculator) {
+      const handler = () => {
+        const stateJson = JSON.stringify(calculator.getState(), null, 2);
+        setEditingStateJson(stateJson);
+      };
+      calculator.observeEvent("change", handler);
+      return () => {
+        calculator.unobserveEvent("change", handler);
+      };
+    }
+  }, [calculator, selectedState]);
+
+  // calculatorの変更を既存StateのJSON textareaにも即時反映（setStateは呼ばない）
+  useEffect(() => {
+    if (selectedState && calculator) {
+      const handler = () => {
+        const stateJson = JSON.stringify(calculator.getState(), null, 2);
+        setIsSyncFromCalculator(true);
+        setEditingStateJson(stateJson);
+      };
+      calculator.observeEvent("change", handler);
+      return () => {
+        calculator.unobserveEvent("change", handler);
+      };
+    }
+  }, [calculator, selectedState]);
+
+  // JSON編集時にcalculatorへ即反映（既存State編集時のみ、calculator→textarea反映時は除外）
+  useEffect(() => {
+    if (selectedState && calculator && !isSyncFromCalculator) {
+      try {
+        const parsed = JSON.parse(editingStateJson);
+        calculator.setState(parsed);
+      } catch {
+        // JSON不正時は何もしない
+      }
+    }
+    // isSyncFromCalculatorは副作用で管理するため、依存配列には含めない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingStateJson, calculator, selectedState]);
+
+  // isSyncFromCalculatorがtrueのときだけfalseに戻す副作用
+  useEffect(() => {
+    if (isSyncFromCalculator) {
+      setIsSyncFromCalculator(false);
+    }
+  }, [isSyncFromCalculator]);
 
   useEffect(() => {
     if (selectedState) {
@@ -77,8 +129,9 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
   // タイムラインの何も無い部分クリックで選択解除
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      // パネル外クリック時のみ
-      if (!(e.target as HTMLElement).closest(".state-event-edit-panel")) {
+      const target = e.target as HTMLElement;
+      // パネル外かつDesmos calculator外クリック時のみ選択解除
+      if (!target.closest(".state-event-edit-panel") && !target.closest(".dcg-container")) {
         if (onDeselect) onDeselect();
       }
     };
@@ -131,6 +184,7 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
             onChange={(e) => {
               setEditingStateJson(e.target.value);
               setHasUnsavedChanges(true);
+              setIsSyncFromCalculator(false); // ユーザー編集時は必ずfalse
             }}
             rows={12}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono text-xs"
