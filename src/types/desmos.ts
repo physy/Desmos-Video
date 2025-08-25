@@ -146,6 +146,14 @@ export interface GraphingCalculatorOptions {
 }
 
 export interface Calculator {
+  asyncScreenshot: (
+    options?: {
+      width?: number;
+      height?: number;
+      targetPixelRatio?: number;
+    },
+    callback?: (url: string) => void
+  ) => void;
   setExpression: (expression: Partial<DesmosExpression>) => void;
   removeExpression: (options: { id: string }) => void;
   setMathBounds: (bounds: MathBounds) => void;

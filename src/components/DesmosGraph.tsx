@@ -15,8 +15,8 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
   aspectRatio = 16 / 9, // フルHDのアスペクト比をデフォルトに
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const calculatorRef = useRef<Calculator | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const calculatorRef = useRef<Calculator | null>(null);
   const isInitializedRef = useRef(false);
 
   // onCalculatorReadyの参照を安定化
@@ -54,13 +54,9 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
           containerRef.current,
           defaultOptions
         );
-
-        if (mounted) {
-          isInitializedRef.current = true;
-
-          if (onCalculatorReadyRef.current && calculatorRef.current) {
-            onCalculatorReadyRef.current(calculatorRef.current);
-          }
+        isInitializedRef.current = true;
+        if (onCalculatorReadyRef.current && calculatorRef.current) {
+          onCalculatorReadyRef.current(calculatorRef.current);
         }
       } catch (error) {
         console.error("Failed to initialize Desmos calculator:", error);
@@ -70,6 +66,7 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
     // Desmos API script を動的に読み込み
     const loadDesmosAPI = () => {
       if (window.Desmos) {
+        setIsLoaded(true);
         initializeCalculator();
         return;
       }

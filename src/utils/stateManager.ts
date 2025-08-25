@@ -34,6 +34,33 @@ const debugLog = (...args: unknown[]) => {
 };
 
 export class StateManager {
+  // 指定時刻のスクリーンショットをキャッシュに保存
+  setScreenshotAtTime(time: number, screenshot: string) {
+    const cache = this.stateCache.get(time);
+    if (cache) {
+      cache.screenshot = screenshot;
+    } else {
+      // 状態が未計算の場合は空のstateで保存
+      this.stateCache.set(time, { state: getBlankDesmosState(), screenshot });
+    }
+  }
+  // ...existing code...
+
+  // 計算用calculator取得用getter
+  public getComputeCalculator(): Calculator | null {
+    // destroy済みかどうか判定（簡易: getStateが例外を投げる場合）
+    try {
+      if (this.computeCalculator) {
+        // getStateを呼んでみてエラーならdestroy済み
+        this.computeCalculator.getState();
+        return this.computeCalculator;
+      }
+    } catch (e) {
+      // destroy済み
+      return null;
+    }
+    return null;
+  }
   // initialState削除
   private timeline: UnifiedEvent[];
   private stateEvents: StateEvent[];
@@ -42,8 +69,8 @@ export class StateManager {
   // 計算用calculator（非表示、state計算専用）
   private computeCalculator: Calculator | null = null;
 
-  // 状態キャッシュ
-  private stateCache: Map<number, DesmosState> = new Map();
+  // 状態キャッシュ（DesmosStateとスクリーンショット）
+  private stateCache: Map<number, { state: DesmosState; screenshot?: string }> = new Map();
 
   constructor(
     timeline: UnifiedEvent[] = [],
@@ -67,7 +94,7 @@ export class StateManager {
     debugLog("Compute calculator set");
   }
 
-  // 指定時刻の状態を計算して取得
+  // 指定時刻の状態とスクリーンショットを計算して取得
   async getStateAtTime(time: number): Promise<DesmosState> {
     if (!this.computeCalculator) {
       throw new Error("Compute calculator not set. Call setComputeCalculator() first.");
@@ -76,7 +103,7 @@ export class StateManager {
     // キャッシュチェック
     if (this.stateCache.has(time)) {
       debugLog(`Cache hit for time ${time}`);
-      return deepCopy(this.stateCache.get(time)!);
+      return deepCopy(this.stateCache.get(time)!.state);
     }
 
     debugLog(`Computing state at time ${time}`);
@@ -102,10 +129,20 @@ export class StateManager {
     // 3. 現在の状態を取得
     const state = this.computeCalculator.getState();
 
-    // 4. キャッシュに保存
-    this.stateCache.set(time, deepCopy(state));
+    // 4. スクリーンショットを取得（APIがあれば）
+    let screenshot: string | undefined = undefined;
+    if (typeof (this.computeCalculator as any).getScreenshot === "function") {
+      try {
+        screenshot = await (this.computeCalculator as any).getScreenshot();
+      } catch (e) {
+        debugLog("Screenshot capture failed:", e);
+      }
+    }
 
-    debugLog(`State computed and cached for time ${time}`);
+    // 5. キャッシュに保存
+    this.stateCache.set(time, { state: deepCopy(state), screenshot });
+
+    debugLog(`State and screenshot cached for time ${time}`);
     return deepCopy(state);
   }
 
@@ -501,8 +538,13 @@ export class StateManager {
       stateEvents: this.stateEvents.length,
       cachedStates: this.stateCache.size,
       cachedTimes: Array.from(this.stateCache.keys()).sort((a, b) => a - b),
+      cachedScreenshots: Array.from(this.stateCache.values()).filter((v) => v.screenshot).length,
       computeCalculatorSet: !!this.computeCalculator,
     };
+  }
+  // 指定時刻のスクリーンショットを取得
+  getScreenshotAtTime(time: number): string | undefined {
+    return this.stateCache.get(time)?.screenshot;
   }
 
   // 特定の時刻での計算過程をデバッグ

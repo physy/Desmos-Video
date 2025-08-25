@@ -133,6 +133,9 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   // バックスペースで選択削除
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 入力欄にフォーカスがある場合はショートカットを無効化
+      const ae = document.activeElement;
+      if (ae && /input|textarea/i.test(ae.tagName)) return;
       if (e.key === "Backspace" && selectedIds.length > 0) {
         selectedIds.forEach((id) => {
           onEventDelete(id);

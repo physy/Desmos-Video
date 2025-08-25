@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { DesmosGraph } from "./components/DesmosGraph";
 import { TimelineControls } from "./components/TimelineControls";
+import GraphPreview from "./components/GraphPreview";
 import type { StateEvent } from "./types/timeline";
 import { UnifiedEventEditPanel } from "./components/UnifiedEventEditPanel";
 import { GraphConfigPanel } from "./components/GraphConfigPanel";
@@ -17,6 +18,8 @@ const DEBUG_MODE = false;
 
 function App() {
   // ページロード時に?showIDs=trueを自動追加
+  // グラフ表示/プレビュー表示のタブ状態
+  const [graphViewTab, setGraphViewTab] = useState<"graph" | "preview">("graph");
   useEffect(() => {
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -125,6 +128,7 @@ function App() {
     getDebugInfo,
     getDebugAtTime,
     setProject,
+    stateManager,
   } = useTimeline(calculator);
 
   // イベント時間変更ハンドラー（ドラッグ対応）
@@ -326,14 +330,49 @@ function App() {
               maxSizes={[80, 50]}
               className="h-full"
             >
-              {/* Desmosグラフ */}
-              <div className="h-full">
-                <div className="h-full bg-white border border-gray-200 overflow-hidden flex items-center justify-center">
-                  <DesmosGraph
-                    onCalculatorReady={handleCalculatorReady}
-                    aspectRatio={graphAspectRatio}
-                    className="w-full h-full"
-                  />
+              {/* グラフ/プレビュー切り替えタブ */}
+              <div className="h-full flex flex-col">
+                <div className="flex border-b border-gray-200 bg-gray-50">
+                  <button
+                    className={`flex-1 px-2 py-2 text-xs font-medium ${
+                      graphViewTab === "graph"
+                        ? "text-blue-600 border-b-2 border-blue-600 bg-white"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                    onClick={() => setGraphViewTab("graph")}
+                  >
+                    グラフ
+                  </button>
+                  <button
+                    className={`flex-1 px-2 py-2 text-xs font-medium ${
+                      graphViewTab === "preview"
+                        ? "text-blue-600 border-b-2 border-blue-600 bg-white"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                    onClick={() => setGraphViewTab("preview")}
+                  >
+                    プレビュー
+                  </button>
+                </div>
+                <div className="flex-1 h-full bg-white border border-gray-200 overflow-hidden flex items-center justify-center">
+                  {graphViewTab === "graph" ? (
+                    <DesmosGraph
+                      onCalculatorReady={handleCalculatorReady}
+                      aspectRatio={graphAspectRatio}
+                      className="w-full h-full"
+                    />
+                  ) : (
+                    // プレビュー画面（拡張性のためラップ）
+                    <div className="w-full h-full flex items-center justify-center">
+                      {/* 今後字幕や数式などを合成表示する場合はここに追加 */}
+                      <GraphPreview
+                        computeCalculator={stateManager?.getComputeCalculator() ?? null}
+                        currentTime={currentTime}
+                        stateManager={stateManager}
+                        videoSettings={videoSettings ?? undefined}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 

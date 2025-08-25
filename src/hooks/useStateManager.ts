@@ -117,11 +117,14 @@ export function useStateManager({
       console.error("[useStateManager] Failed to create compute calculator:", error);
     }
 
-    // クリーンアップ関数
+    // クリーンアップ関数（destroyしない！）
     return () => {
+      // 計算用calculatorはdestroyしない
+      // ただしdivはDOMから削除してOK
       if (computeDiv.parentNode) {
         computeDiv.parentNode.removeChild(computeDiv);
       }
+      // computeCalculatorRef.currentは保持
     };
   }, [desmosReady, autoCreateComputeCalculator]);
 
