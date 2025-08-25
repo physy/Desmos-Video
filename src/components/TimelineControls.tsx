@@ -122,7 +122,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
       if (!timelineElement) return;
 
       const timelineWidth = timelineElement.getBoundingClientRect().width;
-      const deltaTime = ((deltaX / timelineWidth) * duration) / zoom ** 2;
+      const deltaTime = ((deltaX / timelineWidth) * duration) / zoom;
       const newTime = Math.max(0, Math.min(duration, dragState.startTime + deltaTime));
 
       if (!dragState.isDragging && Math.abs(deltaX) > 5) {
@@ -195,7 +195,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
         ...event,
         track: trackIndex,
         width: (eventDuration / duration) * 100 * zoom,
-        left: (event.time / duration) * 100 * zoom,
+        left: (event.time / duration) * 100,
       };
 
       tracks[trackIndex].push(eventWithTrack);
@@ -231,7 +231,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     const clickX = e.clientX - rect.left;
     // ドラッグと同じ計算式: (clickX / timelineWidth) * duration / zoom
     const timelineWidth = rect.width;
-    const clickTime = ((clickX / timelineWidth) * duration) / zoom;
+    const clickTime = (clickX / timelineWidth) * duration;
     onSeek(Math.max(0, Math.min(duration, clickTime)));
   };
 
@@ -240,7 +240,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     const clickX = e.clientX - rect.left;
     // ドラッグと同じ計算式: (clickX / timelineWidth) * duration / zoom
     const timelineWidth = rect.width;
-    const clickTime = ((clickX / timelineWidth) * duration) / zoom;
+    const clickTime = (clickX / timelineWidth) * duration;
     if (onInsertEvent) {
       onInsertEvent(Math.max(0, Math.min(duration, clickTime)), {
         action: "setExpression",
@@ -392,7 +392,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   <div
                     key={index}
                     className="absolute flex flex-col items-center"
-                    style={{ left: `${mark.position * zoom}%`, transform: "translateX(-50%)" }}
+                    style={{ left: `${mark.position}%`, transform: "translateX(-50%)" }}
                   >
                     {/* 目盛り線 */}
                     <div className="w-px h-2 bg-gray-500"></div>
@@ -420,7 +420,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 <div
                   className="absolute top-0 w-1 h-full bg-white rounded shadow-lg z-50"
                   style={{
-                    left: `${(currentTime / duration) * 100 * zoom}%`,
+                    left: `${(currentTime / duration) * 100}%`,
                     transform: "translateX(-50%)",
                   }}
                 ></div>
@@ -428,7 +428,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 {/* 再生済み部分 */}
                 <div
                   className="absolute top-0 left-0 h-full bg-blue-500 rounded opacity-30"
-                  style={{ width: `${(currentTime / duration) * 100 * zoom}%` }}
+                  style={{ width: `${(currentTime / duration) * 100}%` }}
                 ></div>
               </div>
               {/* 計算済み領域の表示（背景バー） */}
@@ -600,7 +600,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
               )}
               {/* StateEventマーカー（ドラッグ対応） */}
               {stateEvents.map((stateEvent, index) => {
-                const position = (stateEvent.time / duration) * 100 * zoom;
+                const position = (stateEvent.time / duration) * 100;
                 const isDragging =
                   dragState &&
                   dragState.type === "state" &&
