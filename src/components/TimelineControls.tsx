@@ -36,6 +36,7 @@ interface TimelineControlsProps {
   onEventDelete: (eventId: string) => void;
   onEventDuplicate: (event: TimelineEvent) => void;
   selectedEventId?: string;
+  setActiveTab: (tab: "state" | "events" | "timeline" | "graph" | "export") => void;
 }
 
 export const TimelineControls: React.FC<TimelineControlsProps> = ({
@@ -57,6 +58,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   onEventDuplicate,
   selectedEventId,
   onStateSelect,
+  setActiveTab,
 }) => {
   // 複数選択管理
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -230,22 +232,50 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     }
   };
 
+  // スナップ間隔（秒）
+  const SNAP_INTERVAL = 0.1;
+
+  // スナップON/OFF状態
+  const [snapEnabled, setSnapEnabled] = useState(true);
+
+  // キー押下でスナップON/OFF切り替え
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 例: AltキーでスナップOFF
+      if (e.altKey) setSnapEnabled(false);
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (!e.altKey) setSnapEnabled(true);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
+
+  // 指定値をスナップ間隔で丸める関数（誤差対策で小数点第2位までに丸める）
+  const snapTime = (time: number) => {
+    if (!snapEnabled) return time;
+    const snapped = Math.round(time / SNAP_INTERVAL) * SNAP_INTERVAL;
+    // 浮動小数点誤差対策: 小数点第2位までで打ち切り
+    return Number(snapped.toFixed(2));
+  };
+
   const handleMouseMove = React.useCallback(
     (e: MouseEvent) => {
       if (!dragState) return;
-
       const deltaX = e.clientX - dragState.startX;
       const timelineElement = document.querySelector(".timeline-container");
       if (!timelineElement) return;
-
       const timelineWidth = timelineElement.getBoundingClientRect().width;
       const deltaTime = ((deltaX / timelineWidth) * duration) / zoom;
-      const newTime = Math.max(0, Math.min(duration, dragState.startTime + deltaTime));
-
+      // スナップ適用
+      const newTime = snapTime(Math.max(0, Math.min(duration, dragState.startTime + deltaTime)));
       if (!dragState.isDragging && Math.abs(deltaX) > 5) {
         setDragState((prev) => (prev ? { ...prev, isDragging: true } : null));
       }
-
       if (dragState.isDragging) {
         if (dragState.type === "event" && dragState.eventId && onEventTimeChange) {
           onEventTimeChange(dragState.eventId, newTime);
@@ -287,12 +317,12 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
       if (multiDragState.isDragging) {
         // イベント
         Object.entries(multiDragState.eventStartTimes).forEach(([id, startTime]) => {
-          const newTime = Math.max(0, Math.min(duration, startTime + deltaTime));
+          const newTime = snapTime(Math.max(0, Math.min(duration, startTime + deltaTime)));
           if (onEventTimeChange) onEventTimeChange(id, newTime);
         });
         // StateEvent
         Object.entries(multiDragState.stateStartTimes).forEach(([id, startTime]) => {
-          const newTime = Math.max(0, Math.min(duration, startTime + deltaTime));
+          const newTime = snapTime(Math.max(0, Math.min(duration, startTime + deltaTime)));
           if (onStateTimeChange) onStateTimeChange(id, newTime);
         });
       }
@@ -673,6 +703,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                         } else {
                           onSeek(event.time);
                         }
+                        // イベントマーカー選択時は必ずEventタブに切り替え
+                        setActiveTab("events");
                       }}
                       onDoubleClick={() => event.id && setSelectedIds([event.id])}
                       onContextMenu={(e) => {
@@ -686,7 +718,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                       title={`${event.action} at ${event.time.toFixed(2)}s (ドラッグで移動可能)`}
                     >
                       {/* イベント内容 */}
-                      <div className="px-2 py-1 text-xs text-white font-medium truncate">
+                      <div className="px-2 py-1 text-xs text-white font-medium truncate select-none">
                         {event.action}
                       </div>
                       {/* ホバー時の詳細情報 */}
@@ -757,6 +789,12 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                           }
                           onSeek(item.time);
                           if (onStateSelect && "state" in item) onStateSelect(item);
+                          // 種類に応じてタブ切り替え
+                          if ("state" in item) {
+                            setActiveTab("state");
+                          } else {
+                            setActiveTab("events");
+                          }
                         }}
                         title={`State Event at ${formatTime(stateEvent.time)}`}
                       >
@@ -818,7 +856,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                             setSelectedIds([exprEvent.id]);
                           }
                           onSeek(exprEvent.time);
-                          // ExpressionEvent用のonSelectが必要ならここで呼ぶ
+                          setActiveTab("events");
                         }}
                         title={`Expression Event at ${formatTime(exprEvent.time)}`}
                       >

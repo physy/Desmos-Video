@@ -588,6 +588,7 @@ function App() {
                   const newEvent = { ...event, id: undefined, time: event.time + 0.1 };
                   insertEvent(newEvent);
                 }}
+                setActiveTab={setActiveTab}
                 selectedEventId={
                   selectedEvent && typeof selectedEvent === "object" && "id" in selectedEvent
                     ? selectedEvent.id
