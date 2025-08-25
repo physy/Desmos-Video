@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Play, Pause, SkipBack, SkipForward } from "lucide-react";
 import type { TimelineEvent, StateEvent } from "../types/timeline";
 
@@ -49,6 +49,25 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   selectedEventId,
   onStateSelect,
 }) => {
+  // 複数選択管理
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  // バックスペースで選択削除
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Backspace" && selectedIds.length > 0) {
+        selectedIds.forEach((id) => {
+          onEventDelete(id);
+          if (onStateTimeChange) {
+            onStateTimeChange(id, -1); // -1で削除扱い（要onStateTimeChange側でfilter）
+          }
+        });
+        setSelectedIds([]);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedIds, onEventDelete, onStateTimeChange]);
   const [showInsertMenu, setShowInsertMenu] = useState(false);
   const [insertTime] = useState(0);
   const [dragState, setDragState] = useState<{
@@ -359,6 +378,9 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
           <div
             className="timeline-container relative overflow-x-auto flex-1 min-h-0 custom-scrollbar px-4"
             style={{ width: "100%", minWidth: 0 }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setSelectedIds([]);
+            }}
           >
             {/* 時間軸の目盛り（ズームに合わせて拡大） */}
             <div
@@ -432,79 +454,87 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 );
               })}
               {/* イベントトラック */}
-              {eventsWithTracks.events.map((event, index) => (
-                <div
-                  key={event.id || index}
-                  className={`absolute rounded-md cursor-pointer hover:scale-105 transition-transform z-20 group select-none ${
-                    selectedEventId === event.id ? "ring-2 ring-white ring-opacity-80" : ""
-                  } ${
-                    dragState && dragState.eventId === event.id && dragState.isDragging
-                      ? "cursor-move opacity-80"
-                      : ""
-                  }`}
-                  style={{
-                    left: `${event.left}%`,
-                    width: `${Math.max(event.width, 1)}%`,
-                    top: `${event.track * 35 + 10}px`,
-                    height: "30px",
-                    backgroundColor: getEventColor(event.action),
-                    border:
-                      selectedEventId === event.id
-                        ? "2px solid rgba(255,255,255,0.8)"
-                        : "2px solid rgba(255,255,255,0.3)",
-                  }}
-                  onMouseDown={(e) => handleMouseDown(event, e)}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (dragState && dragState.isDragging) return; // ドラッグ中はクリックイベントを無視
-                    if (onEventSelect) {
-                      onEventSelect(event);
-                    } else {
-                      onSeek(event.time);
-                    }
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setContextMenu({
-                      x: e.clientX,
-                      y: e.clientY,
-                      event,
-                    });
-                  }}
-                  title={`${event.action} at ${event.time.toFixed(2)}s (ドラッグで移動可能)`}
-                >
-                  {/* イベント内容 */}
-                  <div className="px-2 py-1 text-xs text-white font-medium truncate">
-                    {event.action}
-                  </div>
-
-                  {/* ホバー時の詳細情報 */}
+              {eventsWithTracks.events.map((event, index) => {
+                const isSelected = event.id ? selectedIds.includes(event.id) : false;
+                return (
                   <div
-                    className={`absolute bottom-full mb-2 ${getTooltipPosition(
-                      event.left
-                    )} bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none max-w-xs`}
-                    style={{ zIndex: 10000 }}
+                    key={event.id || index}
+                    className={`absolute rounded-md cursor-pointer hover:scale-105 transition-transform z-20 group select-none ${
+                      isSelected ? "ring-2 ring-blue-400 ring-opacity-80" : ""
+                    } ${
+                      dragState && dragState.eventId === event.id && dragState.isDragging
+                        ? "cursor-move opacity-80"
+                        : ""
+                    }`}
+                    style={{
+                      left: `${event.left}%`,
+                      width: `${Math.max(event.width, 1)}%`,
+                      top: `${event.track * 35 + 10}px`,
+                      height: "30px",
+                      backgroundColor: getEventColor(event.action),
+                      border: isSelected ? "2px solid #3b82f6" : "2px solid rgba(255,255,255,0.3)",
+                    }}
+                    onMouseDown={(e) => handleMouseDown(event, e)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (dragState && dragState.isDragging) return;
+                      if (e.shiftKey && event.id) {
+                        setSelectedIds((prev) => {
+                          if (!event.id || prev.includes(event.id)) return prev;
+                          return [...prev, event.id].filter((id): id is string => !!id);
+                        });
+                      } else if (event.id) {
+                        setSelectedIds([event.id]);
+                      }
+                      if (onEventSelect) {
+                        onEventSelect(event);
+                      } else {
+                        onSeek(event.time);
+                      }
+                    }}
+                    onDoubleClick={() => event.id && setSelectedIds([event.id])}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        event,
+                      });
+                    }}
+                    title={`${event.action} at ${event.time.toFixed(2)}s (ドラッグで移動可能)`}
                   >
-                    <div className="font-medium">{event.action}</div>
-                    <div className="text-gray-300">時刻: {event.time.toFixed(3)}s</div>
-                    <div className="text-gray-400 break-words">
-                      {JSON.stringify(event.args, null, 1)}
+                    {/* イベント内容 */}
+                    <div className="px-2 py-1 text-xs text-white font-medium truncate">
+                      {event.action}
                     </div>
-                    {/* ツールチップの矢印 */}
+                    {/* ホバー時の詳細情報 */}
                     <div
-                      className={`absolute top-full ${
-                        event.left >= 20 && event.left <= 80
-                          ? "left-1/2 transform -translate-x-1/2"
-                          : event.left < 20
-                          ? "left-4"
-                          : "right-4"
-                      }`}
+                      className={`absolute bottom-full mb-2 ${getTooltipPosition(
+                        event.left
+                      )} bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none max-w-xs`}
+                      style={{ zIndex: 10000 }}
                     >
-                      <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
+                      <div className="font-medium">{event.action}</div>
+                      <div className="text-gray-300">時刻: {event.time.toFixed(3)}s</div>
+                      <div className="text-gray-400 break-words">
+                        {JSON.stringify(event.args, null, 1)}
+                      </div>
+                      {/* ツールチップの矢印 */}
+                      <div
+                        className={`absolute top-full ${
+                          event.left >= 20 && event.left <= 80
+                            ? "left-1/2 transform -translate-x-1/2"
+                            : event.left < 20
+                            ? "left-4"
+                            : "right-4"
+                        }`}
+                      >
+                        <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {/* 右クリックメニュー: オーバーレイでラップし、メニュー以外クリックで閉じる */}
               {contextMenu && contextMenu.event && (
                 <>
@@ -576,7 +606,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   dragState.type === "state" &&
                   dragState.stateId === stateEvent.id &&
                   dragState.isDragging;
-                const isSelected = selectedEventId === stateEvent.id;
+                const isSelected = stateEvent.id ? selectedIds.includes(stateEvent.id) : false;
                 return (
                   <div
                     key={stateEvent.id || `state-${index}`}
@@ -587,7 +617,16 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                       className={`w-4 h-8 bg-green-500 rounded-sm transform -translate-x-1/2 relative border border-green-400 shadow-sm cursor-pointer hover:bg-green-400 transition-colors group ${
                         isDragging ? "cursor-move opacity-80" : ""
                       } ${isSelected ? "ring-4 ring-blue-400 border-2 border-blue-500" : ""}`}
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (e.shiftKey && stateEvent.id) {
+                          setSelectedIds((prev) => {
+                            if (!stateEvent.id || prev.includes(stateEvent.id)) return prev;
+                            return [...prev, stateEvent.id].filter((id): id is string => !!id);
+                          });
+                        } else if (stateEvent.id) {
+                          setSelectedIds([stateEvent.id]);
+                        }
                         onSeek(stateEvent.time);
                         if (onStateSelect) onStateSelect(stateEvent);
                       }}
