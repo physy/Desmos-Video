@@ -1,6 +1,15 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
+// 選択矩形の型
+type SelectionRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 import { Play, Pause, SkipBack, SkipForward } from "lucide-react";
-import type { TimelineEvent, StateEvent } from "../types/timeline";
+import type { TimelineEvent, StateEvent, ExpressionEvent } from "../types/timeline";
+// TimelineItem型を定義（型エイリアス）
+type TimelineItem = TimelineEvent | StateEvent | ExpressionEvent;
 
 interface EventWithTrack extends TimelineEvent {
   track: number;
@@ -51,6 +60,73 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
 }) => {
   // 複数選択管理
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // ドラッグ選択用
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionRect, setSelectionRect] = useState<SelectionRect | null>(null);
+  const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
+  const timelineContainerRef = useRef<HTMLDivElement>(null);
+  // ドラッグ選択開始
+  const handleSelectMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const rect = timelineContainerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    selectionStartRef.current = { x, y };
+    setIsSelecting(true);
+    setSelectionRect({ x, y, width: 0, height: 0 });
+  };
+
+  // ドラッグ選択中
+  const handleSelectMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isSelecting || !selectionStartRef.current) return;
+    const rect = timelineContainerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const start = selectionStartRef.current;
+    setSelectionRect({
+      x: Math.min(start.x, x),
+      y: Math.min(start.y, y),
+      width: Math.abs(x - start.x),
+      height: Math.abs(y - start.y),
+    });
+  };
+
+  // ドラッグ選択終了
+  const handleSelectMouseUp = (e?: React.MouseEvent<HTMLDivElement>) => {
+    if (!isSelecting || !selectionRect) return;
+    const selected: string[] = [];
+    // TimelineItemベースで選択判定
+    allMarkers.forEach((item) => {
+      const el = document.querySelector(`[data-id='${item.id}']`);
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const parentRect = timelineContainerRef.current?.getBoundingClientRect();
+      if (!parentRect) return;
+      const x = rect.left - parentRect.left;
+      const y = rect.top - parentRect.top;
+      const w = rect.width;
+      const h = rect.height;
+      if (
+        x < selectionRect.x + selectionRect.width &&
+        x + w > selectionRect.x &&
+        y < selectionRect.y + selectionRect.height &&
+        y + h > selectionRect.y
+      ) {
+        if (item.id) selected.push(item.id);
+      }
+    });
+    // shiftキー押下時は既存選択に追加
+    if (e && e.shiftKey) {
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...selected])));
+    } else {
+      setSelectedIds(selected);
+    }
+    setIsSelecting(false);
+    setSelectionRect(null);
+    selectionStartRef.current = null;
+  };
 
   // バックスペースで選択削除
   useEffect(() => {
@@ -87,31 +163,72 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   // ズーム倍率（1=100%、2=200%...）
   const [zoom, setZoom] = useState(1);
 
-  // ドラッグハンドラー（イベント用）
-  const handleMouseDown = React.useCallback((event: TimelineEvent, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!event.id) return;
-    setDragState({
-      eventId: event.id,
-      startX: e.clientX,
-      startTime: event.time,
-      isDragging: false,
-      type: "event",
-    });
-  }, []);
+  // 複数選択ドラッグ用の初期値保存
+  const [multiDragState, setMultiDragState] = useState<{
+    startX: number;
+    eventStartTimes: { [id: string]: number };
+    stateStartTimes: { [id: string]: number };
+    isDragging: boolean;
+  } | null>(null);
 
-  // ドラッグハンドラー（StateEvent用）
-  const handleStateMouseDown = React.useCallback((stateEvent: StateEvent, e: React.MouseEvent) => {
+  // ドラッグハンドラー（イベント用）
+  const handleItemMouseDown = (item: TimelineItem, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!stateEvent.id) return;
-    setDragState({
-      stateId: stateEvent.id,
-      startX: e.clientX,
-      startTime: stateEvent.time,
-      isDragging: false,
-      type: "state",
-    });
-  }, []);
+    if (!item.id) return;
+    if (selectedIds.length > 1) {
+      if (!selectedIds.includes(item.id)) return;
+      setMultiDragState({
+        startX: e.clientX,
+        eventStartTimes: Object.fromEntries(
+          selectedIds
+            .map((id) => {
+              // TimelineEvent
+              const target = timeline.find((ev) => ev.id === id);
+              return [id, target ? target.time : undefined];
+            })
+            .filter(([_, t]) => t !== undefined)
+        ),
+        stateStartTimes: Object.fromEntries(
+          selectedIds
+            .map((id) => {
+              // StateEvent
+              const target = stateEvents.find((ev) => ev.id === id);
+              return [id, target ? target.time : undefined];
+            })
+            .filter(([_, t]) => t !== undefined)
+        ),
+        isDragging: false,
+      });
+    } else {
+      // 単体ドラッグ開始（型分岐）
+      if ("action" in item) {
+        setDragState({
+          eventId: item.id,
+          startX: e.clientX,
+          startTime: item.time,
+          isDragging: false,
+          type: "event",
+        });
+      } else if ("state" in item) {
+        setDragState({
+          stateId: item.id,
+          startX: e.clientX,
+          startTime: item.time,
+          isDragging: false,
+          type: "state",
+        });
+      } else if ("properties" in item && "type" in item && item.type === "expression") {
+        // ExpressionEvent用のドラッグ（仮実装）
+        setDragState({
+          eventId: item.id,
+          startX: e.clientX,
+          startTime: item.time,
+          isDragging: false,
+          type: "event", // 必要に応じてtype追加
+        });
+      }
+    }
+  };
 
   const handleMouseMove = React.useCallback(
     (e: MouseEvent) => {
@@ -156,6 +273,40 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
       };
     }
   }, [dragState, handleMouseMove, handleMouseUp]);
+  useEffect(() => {
+    if (!multiDragState) return;
+    const handleMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - multiDragState.startX;
+      const timelineElement = document.querySelector(".timeline-container");
+      if (!timelineElement) return;
+      const timelineWidth = timelineElement.getBoundingClientRect().width;
+      const deltaTime = ((deltaX / timelineWidth) * duration) / zoom;
+      if (!multiDragState.isDragging && Math.abs(deltaX) > 5) {
+        setMultiDragState((prev) => (prev ? { ...prev, isDragging: true } : null));
+      }
+      if (multiDragState.isDragging) {
+        // イベント
+        Object.entries(multiDragState.eventStartTimes).forEach(([id, startTime]) => {
+          const newTime = Math.max(0, Math.min(duration, startTime + deltaTime));
+          if (onEventTimeChange) onEventTimeChange(id, newTime);
+        });
+        // StateEvent
+        Object.entries(multiDragState.stateStartTimes).forEach(([id, startTime]) => {
+          const newTime = Math.max(0, Math.min(duration, startTime + deltaTime));
+          if (onStateTimeChange) onStateTimeChange(id, newTime);
+        });
+      }
+    };
+    const handleUp = () => {
+      setMultiDragState(null);
+    };
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+    };
+  }, [multiDragState, duration, zoom, onEventTimeChange, onStateTimeChange]);
   const getEventDuration = (event: TimelineEvent): number => {
     if (event.action === "startAnimation") {
       return (event.args.duration as number) || 1;
@@ -309,6 +460,12 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     return "right-0";
   };
 
+  // TimelineItem型で全マーカーを一元管理
+  const allMarkers: TimelineItem[] = useMemo(() => {
+    // ExpressionEventなど今後追加時はここで拡張
+    return [...timeline, ...stateEvents];
+  }, [timeline, stateEvents]);
+
   return (
     <div className="h-full flex flex-col bg-gray-800 text-white border-t border-gray-700">
       {/* コンパクトな再生コントロール */}
@@ -378,10 +535,27 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
           <div
             className="timeline-container relative overflow-x-auto flex-1 min-h-0 custom-scrollbar px-4"
             style={{ width: "100%", minWidth: 0 }}
-            onMouseDown={(e) => {
-              if (e.target === e.currentTarget) setSelectedIds([]);
-            }}
+            ref={timelineContainerRef}
+            onMouseDown={handleSelectMouseDown}
+            onMouseMove={handleSelectMouseMove}
+            onMouseUp={handleSelectMouseUp}
           >
+            {/* ドラッグ選択矩形 */}
+            {isSelecting && selectionRect && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: selectionRect.x + (timelineContainerRef.current?.scrollLeft ?? 0),
+                  top: selectionRect.y,
+                  width: selectionRect.width,
+                  height: selectionRect.height,
+                  background: "rgba(0, 120, 255, 0.2)",
+                  border: "1px solid #0078ff",
+                  pointerEvents: "none",
+                  zIndex: 1000,
+                }}
+              />
+            )}
             {/* 時間軸の目盛り（ズームに合わせて拡大） */}
             <div
               className="relative mb-4 flex-shrink-0"
@@ -397,7 +571,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                     {/* 目盛り線 */}
                     <div className="w-px h-2 bg-gray-500"></div>
                     {/* 時間ラベル */}
-                    <span className="text-xs text-gray-400 mt-1">
+                    <span className="text-xs text-gray-400 mt-1 select-none">
                       {mark.time === Math.floor(mark.time)
                         ? `${mark.time}`
                         : `${mark.time.toFixed(1)}`}
@@ -453,87 +627,208 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   ></div>
                 );
               })}
-              {/* イベントトラック */}
-              {eventsWithTracks.events.map((event, index) => {
-                const isSelected = event.id ? selectedIds.includes(event.id) : false;
-                return (
-                  <div
-                    key={event.id || index}
-                    className={`absolute rounded-md cursor-pointer hover:scale-105 transition-transform z-20 group select-none ${
-                      isSelected ? "ring-2 ring-blue-400 ring-opacity-80" : ""
-                    } ${
-                      dragState && dragState.eventId === event.id && dragState.isDragging
-                        ? "cursor-move opacity-80"
-                        : ""
-                    }`}
-                    style={{
-                      left: `${event.left}%`,
-                      width: `${Math.max(event.width, 1)}%`,
-                      top: `${event.track * 35 + 10}px`,
-                      height: "30px",
-                      backgroundColor: getEventColor(event.action),
-                      border: isSelected ? "2px solid #3b82f6" : "2px solid rgba(255,255,255,0.3)",
-                    }}
-                    onMouseDown={(e) => handleMouseDown(event, e)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (dragState && dragState.isDragging) return;
-                      if (e.shiftKey && event.id) {
-                        setSelectedIds((prev) => {
-                          if (!event.id || prev.includes(event.id)) return prev;
-                          return [...prev, event.id].filter((id): id is string => !!id);
-                        });
-                      } else if (event.id) {
-                        setSelectedIds([event.id]);
-                      }
-                      if (onEventSelect) {
-                        onEventSelect(event);
-                      } else {
-                        onSeek(event.time);
-                      }
-                    }}
-                    onDoubleClick={() => event.id && setSelectedIds([event.id])}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setContextMenu({
-                        x: e.clientX,
-                        y: e.clientY,
-                        event,
-                      });
-                    }}
-                    title={`${event.action} at ${event.time.toFixed(2)}s (ドラッグで移動可能)`}
-                  >
-                    {/* イベント内容 */}
-                    <div className="px-2 py-1 text-xs text-white font-medium truncate">
-                      {event.action}
-                    </div>
-                    {/* ホバー時の詳細情報 */}
+              {/* マーカー描画（イベント・StateEvent・今後の新種も対応） */}
+              {allMarkers.map((item, index) => {
+                // type判定で描画分岐（今後新種追加時もここで分岐）
+                if ("action" in item) {
+                  // TimelineEvent（イベントマーカー）
+                  const event = item as TimelineEvent;
+                  const isSelected = event.id ? selectedIds.includes(event.id) : false;
+                  const dragEvent =
+                    dragState && dragState.eventId === event.id && dragState.isDragging;
+                  // left/width/track計算はeventsWithTracks.eventsから取得
+                  const eventWithTrack = eventsWithTracks.events.find((ev) => ev.id === event.id);
+                  if (!eventWithTrack) return null;
+                  return (
                     <div
-                      className={`absolute bottom-full mb-2 ${getTooltipPosition(
-                        event.left
-                      )} bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none max-w-xs`}
-                      style={{ zIndex: 10000 }}
+                      key={event.id || index}
+                      data-id={event.id || index}
+                      className={`absolute rounded-md cursor-pointer hover:scale-105 transition-transform z-20 group select-none ${
+                        isSelected ? "ring-2 ring-blue-400 ring-opacity-80" : ""
+                      } ${dragEvent ? "cursor-move opacity-80" : ""}`}
+                      style={{
+                        left: `${eventWithTrack.left}%`,
+                        width: `${Math.max(eventWithTrack.width, 1)}%`,
+                        top: `${eventWithTrack.track * 35 + 10}px`,
+                        height: "30px",
+                        backgroundColor: getEventColor(event.action),
+                        border: isSelected
+                          ? "2px solid #3b82f6"
+                          : "2px solid rgba(255,255,255,0.3)",
+                      }}
+                      onMouseDown={(e) => handleItemMouseDown(item, e)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (dragState && dragState.isDragging) return;
+                        if (e.shiftKey && event.id) {
+                          setSelectedIds((prev) => {
+                            if (!event.id || prev.includes(event.id)) return prev;
+                            return [...prev, event.id].filter((id): id is string => !!id);
+                          });
+                        } else if (event.id) {
+                          setSelectedIds([event.id]);
+                        }
+                        if (onEventSelect) {
+                          onEventSelect(event);
+                        } else {
+                          onSeek(event.time);
+                        }
+                      }}
+                      onDoubleClick={() => event.id && setSelectedIds([event.id])}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setContextMenu({
+                          x: e.clientX,
+                          y: e.clientY,
+                          event,
+                        });
+                      }}
+                      title={`${event.action} at ${event.time.toFixed(2)}s (ドラッグで移動可能)`}
                     >
-                      <div className="font-medium">{event.action}</div>
-                      <div className="text-gray-300">時刻: {event.time.toFixed(3)}s</div>
-                      <div className="text-gray-400 break-words">
-                        {JSON.stringify(event.args, null, 1)}
+                      {/* イベント内容 */}
+                      <div className="px-2 py-1 text-xs text-white font-medium truncate">
+                        {event.action}
                       </div>
-                      {/* ツールチップの矢印 */}
+                      {/* ホバー時の詳細情報 */}
                       <div
-                        className={`absolute top-full ${
-                          event.left >= 20 && event.left <= 80
-                            ? "left-1/2 transform -translate-x-1/2"
-                            : event.left < 20
-                            ? "left-4"
-                            : "right-4"
-                        }`}
+                        className={`absolute bottom-full mb-2 ${getTooltipPosition(
+                          eventWithTrack.left
+                        )} bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none max-w-xs`}
+                        style={{ zIndex: 10000 }}
                       >
-                        <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
+                        <div className="font-medium">{event.action}</div>
+                        <div className="text-gray-300">時刻: {event.time.toFixed(3)}s</div>
+                        <div className="text-gray-400 break-words">
+                          {JSON.stringify(event.args, null, 1)}
+                        </div>
+                        {/* ツールチップの矢印 */}
+                        <div
+                          className={`absolute top-full ${
+                            eventWithTrack.left >= 20 && eventWithTrack.left <= 80
+                              ? "left-1/2 transform -translate-x-1/2"
+                              : eventWithTrack.left < 20
+                              ? "left-4"
+                              : "right-4"
+                          }`}
+                        >
+                          <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
+                  );
+                } else if ("state" in item) {
+                  // StateEvent（状態マーカー）
+                  const stateEvent = item as StateEvent;
+                  const position = (stateEvent.time / duration) * 100;
+                  const isDragging =
+                    dragState &&
+                    dragState.type === "state" &&
+                    dragState.stateId === stateEvent.id &&
+                    dragState.isDragging;
+                  const isSelected = stateEvent.id ? selectedIds.includes(stateEvent.id) : false;
+                  return (
+                    <div
+                      key={stateEvent.id || `state-${index}`}
+                      data-id={stateEvent.id || `state-${index}`}
+                      className="absolute z-30"
+                      style={{ left: `${position}%`, top: "0px" }}
+                    >
+                      <div
+                        className={`w-4 h-8 bg-green-500 rounded-sm transform -translate-x-1/2 relative border border-green-400 shadow-sm cursor-pointer hover:bg-green-400 transition-colors group ${
+                          isDragging ? "cursor-move opacity-80" : ""
+                        } ${isSelected ? "ring-4 ring-blue-400 border-2 border-blue-500" : ""}`}
+                        onMouseDown={(e) => {
+                          if (e.button === 0) {
+                            handleItemMouseDown(item, e);
+                          }
+                        }}
+                        onClick={(e) => {
+                          // ドラッグ中は選択処理をスキップ
+                          if (dragState && dragState.type === "state" && dragState.isDragging)
+                            return;
+                          e.stopPropagation();
+                          if (e.shiftKey && item.id) {
+                            setSelectedIds((prev) => {
+                              if (!item.id || prev.includes(item.id)) return prev;
+                              return [...prev, item.id].filter((id): id is string => !!id);
+                            });
+                          } else if (item.id) {
+                            setSelectedIds([item.id]);
+                          }
+                          onSeek(item.time);
+                          if (onStateSelect && "state" in item) onStateSelect(item);
+                        }}
+                        title={`State Event at ${formatTime(stateEvent.time)}`}
+                      >
+                        {/* StateEventのツールチップ */}
+                        <div
+                          className={`absolute bottom-full mb-2 ${getTooltipPosition(
+                            position
+                          )} bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none max-w-xs`}
+                          style={{ zIndex: 10000 }}
+                        >
+                          <div className="font-medium text-green-300">State Event</div>
+                          <div className="text-gray-300">時刻: {formatTime(stateEvent.time)}</div>
+                          <div className="text-gray-400 break-words">
+                            {stateEvent.description || "Captured state"}
+                          </div>
+                          <div className="text-xs text-blue-300 mt-1 font-medium">
+                            クリックでシーク
+                          </div>
+                          {/* ツールチップの矢印 */}
+                          <div
+                            className={`absolute top-full ${
+                              position >= 20 && position <= 80
+                                ? "left-1/2 transform -translate-x-1/2"
+                                : position < 20
+                                ? "left-4"
+                                : "right-4"
+                            }`}
+                          >
+                            <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                } else if ("properties" in item && "type" in item && item.type === "expression") {
+                  // ExpressionEvent（仮実装例）
+                  const exprEvent = item as ExpressionEvent;
+                  const position = (exprEvent.time / duration) * 100;
+                  const isSelected = exprEvent.id ? selectedIds.includes(exprEvent.id) : false;
+                  return (
+                    <div
+                      key={exprEvent.id || `expr-${index}`}
+                      data-id={exprEvent.id || `expr-${index}`}
+                      className="absolute z-40"
+                      style={{ left: `${position}%`, top: "40px" }}
+                    >
+                      <div
+                        className={`w-4 h-8 bg-yellow-400 rounded-sm transform -translate-x-1/2 relative border border-yellow-300 shadow-sm cursor-pointer hover:bg-yellow-300 transition-colors group ${
+                          isSelected ? "ring-4 ring-blue-400 border-2 border-blue-500" : ""
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (e.shiftKey && exprEvent.id) {
+                            setSelectedIds((prev) => {
+                              if (!exprEvent.id || prev.includes(exprEvent.id)) return prev;
+                              return [...prev, exprEvent.id].filter((id): id is string => !!id);
+                            });
+                          } else if (exprEvent.id) {
+                            setSelectedIds([exprEvent.id]);
+                          }
+                          onSeek(exprEvent.time);
+                          // ExpressionEvent用のonSelectが必要ならここで呼ぶ
+                        }}
+                        title={`Expression Event at ${formatTime(exprEvent.time)}`}
+                      >
+                        {/* ...ツールチップ等は既存流用... */}
+                      </div>
+                    </div>
+                  );
+                }
+                // 今後ExpressionEvent等追加時はここで分岐
+                return null;
               })}
               {/* 右クリックメニュー: オーバーレイでラップし、メニュー以外クリックで閉じる */}
               {contextMenu && contextMenu.event && (
@@ -598,73 +893,6 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   </div>
                 </>
               )}
-              {/* StateEventマーカー（ドラッグ対応） */}
-              {stateEvents.map((stateEvent, index) => {
-                const position = (stateEvent.time / duration) * 100;
-                const isDragging =
-                  dragState &&
-                  dragState.type === "state" &&
-                  dragState.stateId === stateEvent.id &&
-                  dragState.isDragging;
-                const isSelected = stateEvent.id ? selectedIds.includes(stateEvent.id) : false;
-                return (
-                  <div
-                    key={stateEvent.id || `state-${index}`}
-                    className="absolute z-30"
-                    style={{ left: `${position}%`, top: "0px" }}
-                  >
-                    <div
-                      className={`w-4 h-8 bg-green-500 rounded-sm transform -translate-x-1/2 relative border border-green-400 shadow-sm cursor-pointer hover:bg-green-400 transition-colors group ${
-                        isDragging ? "cursor-move opacity-80" : ""
-                      } ${isSelected ? "ring-4 ring-blue-400 border-2 border-blue-500" : ""}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (e.shiftKey && stateEvent.id) {
-                          setSelectedIds((prev) => {
-                            if (!stateEvent.id || prev.includes(stateEvent.id)) return prev;
-                            return [...prev, stateEvent.id].filter((id): id is string => !!id);
-                          });
-                        } else if (stateEvent.id) {
-                          setSelectedIds([stateEvent.id]);
-                        }
-                        onSeek(stateEvent.time);
-                        if (onStateSelect) onStateSelect(stateEvent);
-                      }}
-                      onMouseDown={(e) => handleStateMouseDown(stateEvent, e)}
-                      title={`State Event at ${formatTime(stateEvent.time)}`}
-                    >
-                      {/* StateEventのツールチップ */}
-                      <div
-                        className={`absolute bottom-full mb-2 ${getTooltipPosition(
-                          position
-                        )} bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none max-w-xs`}
-                        style={{ zIndex: 10000 }}
-                      >
-                        <div className="font-medium text-green-300">State Event</div>
-                        <div className="text-gray-300">時刻: {formatTime(stateEvent.time)}</div>
-                        <div className="text-gray-400 break-words">
-                          {stateEvent.description || "Captured state"}
-                        </div>
-                        <div className="text-xs text-blue-300 mt-1 font-medium">
-                          クリックでシーク
-                        </div>
-                        {/* ツールチップの矢印 */}
-                        <div
-                          className={`absolute top-full ${
-                            position >= 20 && position <= 80
-                              ? "left-1/2 transform -translate-x-1/2"
-                              : position < 20
-                              ? "left-4"
-                              : "right-4"
-                          }`}
-                        >
-                          <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </div>
 
