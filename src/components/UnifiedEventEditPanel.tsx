@@ -37,13 +37,8 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
 
   const handleEventChange = (updates: Partial<UnifiedEvent>) => {
     if (!editingEvent) return;
-
-    // 現在の編集中イベントをディープコピーしてから変更を適用
     const updatedEvent = deepCopy(editingEvent);
-
-    // 変更を安全に適用
     Object.assign(updatedEvent, updates);
-
     setEditingEvent(updatedEvent);
     setHasUnsavedChanges(true);
   };
@@ -232,7 +227,7 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
     const currentAnimation = editingEvent.animation || {
       type: "variable",
       targetId: "",
-      duration: 1,
+      durationFrames: 30,
       variable: { name: "", startValue: 0, endValue: 1, autoDetect: false },
       easing: "linear",
     };
@@ -253,7 +248,7 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
               const newAnimation = {
                 type: newType,
                 targetId: currentAnimation.targetId || "",
-                duration: currentAnimation.duration || 1,
+                durationFrames: currentAnimation.durationFrames || 30,
                 easing: currentAnimation.easing || "linear",
                 ...(newType === "variable" && {
                   variable: { name: "", startValue: 0, endValue: 1, autoDetect: false },
@@ -265,7 +260,6 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                   action: { steps: 10, frameInterval: 1 },
                 }),
               };
-
               handleEventChange({ animation: newAnimation });
             }}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -295,18 +289,18 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
         {/* アニメーション時間 */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            アニメーション時間（秒）
+            アニメーションフレーム数
           </label>
           <input
             type="number"
-            value={currentAnimation.duration || 1}
+            value={currentAnimation.durationFrames || 30}
             onChange={(e) => {
               handleEventChange({
-                animation: { ...currentAnimation, duration: parseFloat(e.target.value) },
+                animation: { ...currentAnimation, durationFrames: parseInt(e.target.value) },
               });
             }}
-            step="0.1"
-            min="0.1"
+            step="1"
+            min="1"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
@@ -597,12 +591,12 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
 
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">実行時刻（秒）</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">実行フレーム</label>
           <input
             type="number"
-            value={editingEvent.time}
-            onChange={(e) => handleEventChange({ time: parseFloat(e.target.value) })}
-            step="0.1"
+            value={editingEvent.frame}
+            onChange={(e) => handleEventChange({ frame: parseInt(e.target.value) })}
+            step="1"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
@@ -614,7 +608,6 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
             onChange={(e) =>
               handleEventChange({
                 type: e.target.value as UnifiedEvent["type"],
-                // タイプ変更時は関連プロパティをリセット
                 ...(e.target.value === "expression" && {
                   properties: {},
                   bounds: undefined,
@@ -629,7 +622,7 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                   animation: {
                     type: "variable",
                     targetId: "",
-                    duration: 1,
+                    durationFrames: 30,
                     variable: { name: "", startValue: 0, endValue: 1, autoDetect: false },
                     easing: "linear",
                   },

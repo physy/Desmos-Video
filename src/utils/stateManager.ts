@@ -35,13 +35,12 @@ const debugLog = (...args: unknown[]) => {
 
 export class StateManager {
   // 指定時刻のスクリーンショットをキャッシュに保存
-  setScreenshotAtTime(time: number, screenshot: string) {
-    const cache = this.stateCache.get(time);
+  setScreenshotAtFrame(frame: number, screenshot: string) {
+    const cache = this.stateCache.get(frame);
     if (cache) {
       cache.screenshot = screenshot;
     } else {
-      // 状態が未計算の場合は空のstateで保存
-      this.stateCache.set(time, { state: getBlankDesmosState(), screenshot });
+      this.stateCache.set(frame, { state: getBlankDesmosState(), screenshot });
     }
   }
   // ...existing code...
@@ -77,8 +76,8 @@ export class StateManager {
     stateEvents: StateEvent[] = [],
     continuousEvents: ContinuousEvent[] = []
   ) {
-    this.timeline = [...timeline].sort((a, b) => a.time - b.time);
-    this.stateEvents = [...stateEvents].sort((a, b) => a.time - b.time);
+    this.timeline = [...timeline].sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0));
+    this.stateEvents = [...stateEvents].sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0));
     this.continuousEvents = continuousEvents;
 
     debugLog("StateManagerV2 initialized with:", {
@@ -95,62 +94,51 @@ export class StateManager {
   }
 
   // 指定時刻の状態とスクリーンショットを計算して取得
-  async getStateAtTime(time: number): Promise<DesmosState> {
+  async getStateAtFrame(frame: number): Promise<DesmosState> {
     if (!this.computeCalculator) {
       throw new Error("Compute calculator not set. Call setComputeCalculator() first.");
     }
 
-    // キャッシュチェック
-    if (this.stateCache.has(time)) {
-      debugLog(`Cache hit for time ${time}`);
-      return deepCopy(this.stateCache.get(time)!.state);
+    if (this.stateCache.has(frame)) {
+      debugLog(`Cache hit for frame ${frame}`);
+      return deepCopy(this.stateCache.get(frame)!.state);
     }
 
-    debugLog(`Computing state at time ${time}`);
+    debugLog(`Computing state at frame ${frame}`);
 
-    // 1. 計算用calculatorを初期状態にリセット
     await this.resetComputeCalculatorToInitialState();
 
-    // 2. 指定時刻までのイベントを時系列順に適用
-    const eventsUpToTime = this.getEventsUpToTime(time);
-    console.log({ eventsUpToTime });
-    debugLog(`Applying ${eventsUpToTime.length} events up to time ${time}`);
+    const eventsUpToFrame = this.getEventsUpToFrame(frame);
+    debugLog(`Applying ${eventsUpToFrame.length} events up to frame ${frame}`);
 
-    for (const event of eventsUpToTime) {
+    for (const event of eventsUpToFrame) {
       if ("type" in event && event.type === "state") {
-        // StateEvent の処理
         await this.applyStateEventToComputeCalculator(event as StateEvent);
       } else {
-        // UnifiedEvent の処理
         await this.applyUnifiedEventToComputeCalculator(event as UnifiedEvent);
       }
     }
 
-    // 3. 現在の状態を取得
     const state = this.computeCalculator.getState();
 
-    // 4. スクリーンショットを取得（APIがあれば）
     let screenshot: string | undefined = undefined;
-    if (typeof (this.computeCalculator as any).getScreenshot === "function") {
-      try {
-        screenshot = await (this.computeCalculator as any).getScreenshot();
-      } catch (e) {
-        debugLog("Screenshot capture failed:", e);
-      }
+    try {
+      screenshot = await (this.computeCalculator as any).getScreenshot();
+    } catch (e) {
+      debugLog("Screenshot capture failed:", e);
     }
 
-    // 5. キャッシュに保存
-    this.stateCache.set(time, { state: deepCopy(state), screenshot });
+    this.stateCache.set(frame, { state: deepCopy(state), screenshot });
 
-    debugLog(`State and screenshot cached for time ${time}`);
+    debugLog(`State and screenshot cached for frame ${frame}`);
     return deepCopy(state);
   }
 
   // 指定時刻の状態を表示用calculatorに適用
-  async applyStateAtTime(time: number, displayCalculator: Calculator): Promise<void> {
-    const state = await this.getStateAtTime(time);
+  async applyStateAtFrame(frame: number, displayCalculator: Calculator): Promise<void> {
+    const state = await this.getStateAtFrame(frame);
     this.applyStateToCalculator(state, displayCalculator);
-    debugLog(`State applied to display calculator at time ${time}`);
+    debugLog(`State applied to display calculator at frame ${frame}`);
   }
 
   // 計算用calculatorを初期状態にリセット
@@ -164,44 +152,36 @@ export class StateManager {
   }
 
   // 指定時刻までのイベントを取得（アニメーションの進行状態も考慮）
-  private getEventsUpToTime(time: number): Array<UnifiedEvent | StateEvent> {
+  private getEventsUpToFrame(frame: number): Array<UnifiedEvent | StateEvent> {
     const events: Array<UnifiedEvent | StateEvent> = [];
 
-    // StateEventsを追加（指定時刻以前）
     for (const stateEvent of this.stateEvents) {
-      if (stateEvent.time <= time) {
+      if ((stateEvent.frame ?? 0) <= frame) {
         events.push(stateEvent);
       }
     }
 
-    // UnifiedEventsを追加（アニメーションは特別処理）
     for (const event of this.timeline) {
       if (event.type === "animation" && event.animation) {
-        // アニメーションイベントは特別処理
-        const animStartTime = event.time;
-        const animEndTime = event.time + event.animation.duration;
+        const animStartFrame = event.frame ?? 0;
+        const animEndFrame = animStartFrame + (event.animation.durationFrames ?? 0);
 
-        if (time >= animStartTime && time <= animEndTime) {
-          // アニメーション実行中：進行状態を計算して適用
-          const progress = (time - animStartTime) / event.animation.duration;
+        if (frame >= animStartFrame && frame <= animEndFrame) {
+          const progress = (frame - animStartFrame) / (event.animation.durationFrames ?? 1);
           const animationEvent = this.createInterpolatedAnimationEvent(event, progress);
           events.push(animationEvent);
-        } else if (time > animEndTime) {
-          // アニメーション完了：最終値を適用
+        } else if (frame > animEndFrame) {
           const animationEvent = this.createInterpolatedAnimationEvent(event, 1.0);
           events.push(animationEvent);
         }
-        // time < animStartTime の場合は何もしない（アニメーション未開始）
       } else {
-        // 通常のイベント
-        if (event.time <= time) {
+        if ((event.frame ?? 0) <= frame) {
           events.push(event);
         }
       }
     }
 
-    // 時系列順にソート
-    return events.sort((a, b) => a.time - b.time);
+    return events.sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0));
   }
 
   // アニメーションの進行状態に基づいて補間されたイベントを作成
@@ -284,7 +264,7 @@ export class StateManager {
   private async applyStateEventToComputeCalculator(stateEvent: StateEvent): Promise<void> {
     if (!this.computeCalculator) return;
 
-    debugLog(`Applying state event at time ${stateEvent.time}`);
+    debugLog(`Applying state event at frame ${stateEvent.frame}`);
     this.applyStateToCalculator(stateEvent.state, this.computeCalculator);
   }
 
@@ -292,7 +272,8 @@ export class StateManager {
   private async applyUnifiedEventToComputeCalculator(event: UnifiedEvent): Promise<void> {
     if (!this.computeCalculator) return;
 
-    debugLog(`Applying unified event at time ${event.time}:`, event.type);
+    debugLog(`Applying unified event at frame ${event.frame}:`, event.type);
+    // frameが未定義の場合は0として扱う
 
     switch (event.type) {
       case "expression":
@@ -426,11 +407,12 @@ export class StateManager {
     debugLog(`Timeline before add - length: ${this.timeline.length}`);
 
     this.timeline.push(event);
-    this.timeline.sort((a, b) => a.time - b.time);
+    this.timeline.sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0));
     this.clearCache();
 
     debugLog(`Timeline after add - length: ${this.timeline.length}`);
-    debugLog(`Added event at time ${event.time}`);
+    debugLog(`Added event at frame ${event.frame}`);
+    // frameが未定義の場合は0として扱う
   }
 
   // イベントを更新
@@ -449,8 +431,8 @@ export class StateManager {
     debugLog(`After update - Event ${eventId}:`, this.timeline[index]);
 
     // 時刻が変更された場合はソート
-    if (updates.time !== undefined) {
-      this.timeline.sort((a, b) => a.time - b.time);
+    if (updates.frame !== undefined) {
+      this.timeline.sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0));
     }
 
     this.clearCache();
@@ -482,9 +464,9 @@ export class StateManager {
   // StateEventを追加
   addStateEvent(stateEvent: StateEvent): void {
     this.stateEvents.push(stateEvent);
-    this.stateEvents.sort((a, b) => a.time - b.time);
+    this.stateEvents.sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0));
     this.clearCache();
-    debugLog(`Added state event at time ${stateEvent.time}`);
+    debugLog(`Added state event at frame ${stateEvent.frame}`);
   }
 
   // StateEventをクリア
@@ -496,17 +478,17 @@ export class StateManager {
 
   // 現在のcalculatorの状態からStateEventを作成
   createStateEventFromCalculator(
-    time: number,
+    frame: number,
     calculator: Calculator,
     description?: string
   ): StateEvent {
     const currentState = calculator.getState();
     const stateEvent: StateEvent = {
-      time,
+      frame,
       type: "state",
       state: deepCopy(currentState),
       id: `state_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      description: description || `State at ${time}s`,
+      description: description || `State at frame ${frame}`,
     };
 
     this.addStateEvent(stateEvent);
@@ -543,12 +525,12 @@ export class StateManager {
     };
   }
   // 指定時刻のスクリーンショットを取得
-  getScreenshotAtTime(time: number): string | undefined {
-    return this.stateCache.get(time)?.screenshot;
+  getScreenshotAtFrame(frame: number): string | undefined {
+    return this.stateCache.get(frame)?.screenshot;
   }
 
   // 特定の時刻での計算過程をデバッグ
-  async debugStateCalculation(time: number): Promise<{
+  async debugStateCalculation(frame: number): Promise<{
     eventsApplied: Array<UnifiedEvent | StateEvent>;
     finalState: DesmosState;
   }> {
@@ -556,37 +538,30 @@ export class StateManager {
       throw new Error("Compute calculator not set");
     }
 
-    debugLog(`=== Debug state calculation for time ${time} ===`);
+    debugLog(`=== Debug state calculation for frame ${frame} ===`);
 
-    // 計算用calculatorを初期状態にリセット
     await this.resetComputeCalculatorToInitialState();
     debugLog("Reset to initial state");
 
-    // 適用するイベントを取得
-    const eventsApplied = this.getEventsUpToTime(time);
+    const eventsApplied = this.getEventsUpToFrame(frame);
     debugLog(
       `Events to apply (${eventsApplied.length}):`,
-      eventsApplied.map((e) => ({ time: e.time, type: e.type, id: e.id }))
+      eventsApplied.map((e) => ({ frame: (e as any).frame, type: e.type, id: e.id }))
     );
 
-    // 各イベントを適用
     for (const event of eventsApplied) {
-      debugLog(`Applying event at ${event.time}:`, event);
+      debugLog(`Applying event at ${(event as any).frame}:`, event);
 
       if ("type" in event && event.type === "state") {
-        // StateEvent の処理
         await this.applyStateEventToComputeCalculator(event as StateEvent);
       } else {
-        // UnifiedEvent の処理
         await this.applyUnifiedEventToComputeCalculator(event as UnifiedEvent);
       }
 
-      // 適用後の式の状態をログ
       const expressions = this.computeCalculator.getExpressions();
       debugLog(`After applying event - expressions count: ${expressions.length}`);
     }
 
-    // 最終状態を取得
     const finalState = this.computeCalculator.getState();
     debugLog(`Final state has ${finalState.expressions?.list?.length || 0} expressions`);
 

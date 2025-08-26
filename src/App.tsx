@@ -37,6 +37,7 @@ function App() {
     TimelineEvent | StateEvent | { type: "initial" } | null
   >(null);
   const [videoSettings, setVideoSettings] = useState<VideoExportSettings | null>(null);
+  const fps = videoSettings?.fps || 30;
   const [graphAspectRatio, setGraphAspectRatio] = useState<number>(16 / 9); // フルHDをデフォルト
 
   // クエリに showIDs を自動的につける
@@ -112,7 +113,7 @@ function App() {
 
   const {
     project,
-    currentTime,
+    currentFrame,
     isPlaying,
     seekTo,
     play,
@@ -126,7 +127,7 @@ function App() {
     captureCurrentState,
     clearCache,
     getDebugInfo,
-    getDebugAtTime,
+    getDebugAtFrame,
     setProject,
     stateManager,
   } = useTimeline(calculator);
@@ -136,7 +137,7 @@ function App() {
     (eventId: string, newTime: number) => {
       const event = project.timeline.find((e) => e.id === eventId);
       if (event) {
-        updateEvent(eventId, { ...event, time: newTime });
+        updateEvent(eventId, { ...event, frame: newTime });
         console.log(`Moved event ${eventId} to time ${newTime.toFixed(3)}s`);
       }
     },
@@ -149,8 +150,8 @@ function App() {
       setProject((prev: typeof project) => ({
         ...prev,
         stateEvents: prev.stateEvents
-          .map((state: StateEvent) => (state.id === stateId ? { ...state, time: newTime } : state))
-          .sort((a: StateEvent, b: StateEvent) => a.time - b.time),
+          .map((state: StateEvent) => (state.id === stateId ? { ...state, frame: newTime } : state))
+          .sort((a: StateEvent, b: StateEvent) => a.frame - b.frame),
       }));
       console.log(`Moved state ${stateId} to time ${newTime.toFixed(3)}s`);
     },
@@ -178,13 +179,13 @@ function App() {
   const addDemoEvents = useCallback(() => {
     // デモイベントを追加
     addEvent({
-      time: 5,
+      frame: 5,
       action: "setMathBounds",
       args: { left: -5, right: 5, top: 3, bottom: -3 },
     });
 
     addEvent({
-      time: 7,
+      frame: 7,
       action: "setExpression",
       args: {
         id: "demo3",
@@ -201,36 +202,36 @@ function App() {
 
   // 現在のstateをキャプチャ
   const handleCaptureState = useCallback(() => {
-    const stateEvent = captureCurrentState(`Manual capture at ${currentTime.toFixed(1)}s`);
+    const stateEvent = captureCurrentState(`Manual capture at frame ${currentFrame}`);
     if (stateEvent) {
       console.log("State captured:", stateEvent);
     }
-  }, [captureCurrentState, currentTime]);
+  }, [captureCurrentState, currentFrame]);
 
   // デバッグ情報を表示（StateManager版）
   const handleShowDebugInfo = useCallback(async () => {
     const debugInfo = getDebugInfo();
     console.log("Debug Info:", debugInfo);
 
-    // 現在時刻周辺のデバッグ情報
-    const timeDebug = await getDebugAtTime(currentTime);
-    console.log(`Debug at ${currentTime}s:`, timeDebug);
+    // 現在フレーム周辺のデバッグ情報
+    const frameDebug = await getDebugAtFrame(currentFrame);
+    console.log(`Debug at frame ${currentFrame}:`, frameDebug);
 
     const stateManagerDebug = debugInfo.stateManagerDebug as Record<string, unknown>;
 
     console.log(
       `=== 基本情報 ===\n` +
-        `Current Time: ${debugInfo.currentTime.toFixed(1)}s\n` +
-        `Last Applied: ${debugInfo.lastAppliedTime.toFixed(1)}s\n` +
+        `Current Frame: ${debugInfo.currentFrame}\n` +
+        `Last Applied Frame: ${debugInfo.lastAppliedFrame}\n` +
         `Timeline Events: ${debugInfo.timelineEventsCount}\n` +
         `State Events: ${debugInfo.stateEventsCount}\n\n` +
         `=== StateManager情報 ===\n` +
         `StateManager Debug: ${JSON.stringify(stateManagerDebug, null, 2)}\n\n` +
-        `=== 現在時刻 (${currentTime}s) の状況 ===\n` +
-        `Time Debug Result: ${timeDebug ? "Success" : "Failed"}\n` +
-        (timeDebug ? `Applied Events: ${timeDebug.eventsApplied.length}` : "")
+        `=== 現在フレーム (${currentFrame}) の状況 ===\n` +
+        `Frame Debug Result: ${frameDebug ? "Success" : "Failed"}\n` +
+        (frameDebug ? `Applied Events: ${frameDebug.eventsApplied.length}` : "")
     );
-  }, [getDebugInfo, getDebugAtTime, currentTime]);
+  }, [getDebugInfo, getDebugAtFrame, currentFrame]);
 
   // 計算済み領域の情報を取得（StateManager用）
   const calculatedRegions: Array<{ start: number; end: number }> = [];
@@ -360,6 +361,9 @@ function App() {
                       onCalculatorReady={handleCalculatorReady}
                       aspectRatio={graphAspectRatio}
                       className="w-full h-full"
+                      currentFrame={currentFrame}
+                      stateManager={stateManager}
+                      fps={fps}
                     />
                   ) : (
                     // プレビュー画面（拡張性のためラップ）
@@ -367,9 +371,10 @@ function App() {
                       {/* 今後字幕や数式などを合成表示する場合はここに追加 */}
                       <GraphPreview
                         computeCalculator={stateManager?.getComputeCalculator() ?? null}
-                        currentTime={currentTime}
+                        currentFrame={currentFrame}
                         stateManager={stateManager}
                         videoSettings={videoSettings ?? undefined}
+                        fps={fps}
                       />
                     </div>
                   )}
@@ -446,7 +451,7 @@ function App() {
                               project.stateEvents.find((s) => s.id === selectedEvent.id) || null
                             }
                             calculator={calculator}
-                            currentTime={currentTime}
+                            currentTime={currentFrame}
                             onStateUpdate={(state) => {
                               setProject((prev) => ({
                                 ...prev,
@@ -472,7 +477,7 @@ function App() {
                           <StateEventEditPanel
                             selectedState={null}
                             calculator={calculator}
-                            currentTime={currentTime}
+                            currentTime={currentFrame}
                             onStateUpdate={(state) => {
                               setProject((prev) => ({
                                 ...prev,
@@ -528,7 +533,8 @@ function App() {
                         <VideoExportPanel
                           videoSettings={videoSettings}
                           onVideoSettingsChange={handleVideoSettingsChange}
-                          currentDuration={project.duration}
+                          currentDuration={project.durationFrames}
+                          fps={fps}
                           onSettingsChange={(settings) => {
                             console.log("Video export settings updated:", settings);
                           }}
@@ -550,12 +556,12 @@ function App() {
                               プロジェクト情報
                             </h3>
                             <div className="text-xs text-gray-500 space-y-1">
-                              <div>総時間: {project.duration}秒</div>
+                              <div>総フレーム数: {project.durationFrames}フレーム</div>
                               <div>Timeline Events: {project.timeline.length}</div>
                               <div className="text-green-600">
                                 State Events: {project.stateEvents.length}
                               </div>
-                              <div>現在時刻: {currentTime.toFixed(3)}秒</div>
+                              <div>現在フレーム: {currentFrame}</div>
                               <div>初期式数: {project.initialState.expressions.list.length}</div>
                             </div>
                           </div>
@@ -595,8 +601,9 @@ function App() {
           >
             <div className="flex-1 min-h-0" style={{ overflow: "visible" }}>
               <TimelineControls
-                currentTime={currentTime}
-                duration={project.duration}
+                currentFrame={currentFrame}
+                duration={project.durationFrames}
+                fps={fps}
                 isPlaying={isPlaying}
                 timeline={project.timeline}
                 stateEvents={project.stateEvents}
@@ -604,8 +611,8 @@ function App() {
                 onSeek={seekTo}
                 onPlay={play}
                 onPause={pause}
-                onInsertEvent={(time, event) => insertEvent({ ...event, time })}
-                onInsertState={(time) => captureCurrentState(`State at ${time.toFixed(1)}s`)}
+                onInsertEvent={(frame, event) => insertEvent({ ...event, frame })}
+                onInsertState={(frame) => captureCurrentState(`State at frame ${frame}`)}
                 onEventSelect={setSelectedEvent}
                 onStateSelect={(state) => {
                   setSelectedEvent(state);
@@ -624,7 +631,7 @@ function App() {
                 }}
                 onEventDuplicate={(event) => {
                   // 新しいIDと時刻+0.1で複製
-                  const newEvent = { ...event, id: undefined, time: event.time + 0.1 };
+                  const newEvent = { ...event, id: undefined, frame: event.frame + 1 };
                   insertEvent(newEvent);
                 }}
                 setActiveTab={setActiveTab}

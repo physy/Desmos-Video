@@ -19,8 +19,9 @@ interface EventWithTrack extends TimelineEvent {
 
 interface TimelineControlsProps {
   onStateSelect?: (state: StateEvent) => void;
-  currentTime: number;
+  currentFrame: number;
   duration: number;
+  fps?: number;
   isPlaying: boolean;
   timeline: TimelineEvent[];
   stateEvents?: StateEvent[];
@@ -28,7 +29,7 @@ interface TimelineControlsProps {
   onSeek: (time: number) => void;
   onPlay: () => void;
   onPause: () => void;
-  onInsertEvent?: (time: number, event: Omit<TimelineEvent, "id" | "time">) => void;
+  onInsertEvent?: (time: number, event: Omit<TimelineEvent, "id" | "time" | "frame">) => void;
   onInsertState?: (time: number) => void;
   onEventSelect?: (event: TimelineEvent) => void;
   onEventTimeChange?: (eventId: string, newTime: number) => void; // イベントの時間変更
@@ -40,7 +41,7 @@ interface TimelineControlsProps {
 }
 
 export const TimelineControls: React.FC<TimelineControlsProps> = ({
-  currentTime,
+  currentFrame,
   duration,
   isPlaying,
   timeline,
@@ -55,8 +56,9 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   onEventTimeChange,
   onStateTimeChange,
   onEventDelete,
+  fps = 30,
   onEventDuplicate,
-  selectedEventId,
+  // selectedEventId,
   onStateSelect,
   setActiveTab,
 }) => {
@@ -64,6 +66,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // ドラッグ選択用
   const [isSelecting, setIsSelecting] = useState(false);
+  // frame→秒変換
+  const frameToSeconds = (frame: number) => (fps ? frame / fps : frame / 30);
   const [selectionRect, setSelectionRect] = useState<SelectionRect | null>(null);
   const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
   const timelineContainerRef = useRef<HTMLDivElement>(null);
@@ -81,6 +85,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
 
   // ドラッグ選択中
   const handleSelectMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const frameToSeconds = (frame: number) => (fps ? frame / fps : frame / 30);
     if (!isSelecting || !selectionStartRef.current) return;
     const rect = timelineContainerRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -130,6 +135,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     selectionStartRef.current = null;
   };
 
+  // <div>現在: {currentFrame}フレーム ({frameToSeconds(currentFrame).toFixed(2)}秒)</div>
   // バックスペースで選択削除
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -189,7 +195,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
             .map((id) => {
               // TimelineEvent
               const target = timeline.find((ev) => ev.id === id);
-              return [id, target ? target.time : undefined];
+              return [id, target ? target.frame : undefined];
             })
             .filter(([_, t]) => t !== undefined)
         ),
@@ -198,7 +204,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
             .map((id) => {
               // StateEvent
               const target = stateEvents.find((ev) => ev.id === id);
-              return [id, target ? target.time : undefined];
+              return [id, target ? target.frame : undefined];
             })
             .filter(([_, t]) => t !== undefined)
         ),
@@ -210,7 +216,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
         setDragState({
           eventId: item.id,
           startX: e.clientX,
-          startTime: item.time,
+          startTime: item.frame,
           isDragging: false,
           type: "event",
         });
@@ -218,7 +224,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
         setDragState({
           stateId: item.id,
           startX: e.clientX,
-          startTime: item.time,
+          startTime: item.frame,
           isDragging: false,
           type: "state",
         });
@@ -227,7 +233,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
         setDragState({
           eventId: item.id,
           startX: e.clientX,
-          startTime: item.time,
+          startTime: item.frame,
           isDragging: false,
           type: "event", // 必要に応じてtype追加
         });
@@ -235,8 +241,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     }
   };
 
-  // スナップ間隔（秒）
-  const SNAP_INTERVAL = 0.1;
+  // スナップ間隔（フレーム）
+  const SNAP_FRAME = 1;
 
   // スナップON/OFF状態
   const [snapEnabled, setSnapEnabled] = useState(true);
@@ -258,13 +264,14 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     };
   }, []);
 
-  // 指定値をスナップ間隔で丸める関数（誤差対策で小数点第2位までに丸める）
-  const snapTime = (time: number) => {
-    if (!snapEnabled) return time;
-    const snapped = Math.round(time / SNAP_INTERVAL) * SNAP_INTERVAL;
-    // 浮動小数点誤差対策: 小数点第2位までで打ち切り
-    return Number(snapped.toFixed(2));
-  };
+  // frame単位でスナップする関数
+  const snapFrame = React.useCallback(
+    (frame: number) => {
+      if (!snapEnabled) return frame;
+      return Math.round(frame / SNAP_FRAME) * SNAP_FRAME;
+    },
+    [snapEnabled]
+  );
 
   const handleMouseMove = React.useCallback(
     (e: MouseEvent) => {
@@ -273,22 +280,22 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
       const timelineElement = document.querySelector(".timeline-container");
       if (!timelineElement) return;
       const timelineWidth = timelineElement.getBoundingClientRect().width;
-      const deltaTime = ((deltaX / timelineWidth) * duration) / zoom;
-      // スナップ適用
-      const newTime = snapTime(Math.max(0, Math.min(duration, dragState.startTime + deltaTime)));
+      const deltaFrame = ((deltaX / timelineWidth) * duration) / zoom;
+      // frame単位でスナップ
+      const newFrame = snapFrame(Math.max(0, Math.min(duration, dragState.startTime + deltaFrame)));
       if (!dragState.isDragging && Math.abs(deltaX) > 5) {
         setDragState((prev) => (prev ? { ...prev, isDragging: true } : null));
       }
       if (dragState.isDragging) {
         if (dragState.type === "event" && dragState.eventId && onEventTimeChange) {
-          onEventTimeChange(dragState.eventId, newTime);
+          onEventTimeChange(dragState.eventId, newFrame);
         }
         if (dragState.type === "state" && dragState.stateId && onStateTimeChange) {
-          onStateTimeChange(dragState.stateId, newTime);
+          onStateTimeChange(dragState.stateId, newFrame);
         }
       }
     },
-    [dragState, duration, onEventTimeChange, onStateTimeChange, zoom]
+    [dragState, duration, onEventTimeChange, onStateTimeChange, zoom, snapFrame]
   );
 
   const handleMouseUp = React.useCallback(() => {
@@ -313,20 +320,20 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
       const timelineElement = document.querySelector(".timeline-container");
       if (!timelineElement) return;
       const timelineWidth = timelineElement.getBoundingClientRect().width;
-      const deltaTime = ((deltaX / timelineWidth) * duration) / zoom;
+      const deltaFrame = ((deltaX / timelineWidth) * duration) / zoom;
       if (!multiDragState.isDragging && Math.abs(deltaX) > 5) {
         setMultiDragState((prev) => (prev ? { ...prev, isDragging: true } : null));
       }
       if (multiDragState.isDragging) {
         // イベント
         Object.entries(multiDragState.eventStartTimes).forEach(([id, startTime]) => {
-          const newTime = snapTime(Math.max(0, Math.min(duration, startTime + deltaTime)));
-          if (onEventTimeChange) onEventTimeChange(id, newTime);
+          const newFrame = snapFrame(Math.max(0, Math.min(duration, startTime + deltaFrame)));
+          if (onEventTimeChange) onEventTimeChange(id, newFrame);
         });
         // StateEvent
         Object.entries(multiDragState.stateStartTimes).forEach(([id, startTime]) => {
-          const newTime = snapTime(Math.max(0, Math.min(duration, startTime + deltaTime)));
-          if (onStateTimeChange) onStateTimeChange(id, newTime);
+          const newFrame = snapFrame(Math.max(0, Math.min(duration, startTime + deltaFrame)));
+          if (onStateTimeChange) onStateTimeChange(id, newFrame);
         });
       }
     };
@@ -339,7 +346,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
       document.removeEventListener("mousemove", handleMove);
       document.removeEventListener("mouseup", handleUp);
     };
-  }, [multiDragState, duration, zoom, onEventTimeChange, onStateTimeChange]);
+  }, [multiDragState, duration, zoom, onEventTimeChange, onStateTimeChange, snapFrame]);
   const getEventDuration = (event: TimelineEvent): number => {
     if (event.action === "startAnimation") {
       return (event.args.duration as number) || 1;
@@ -349,20 +356,20 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
 
   // イベントをトラック（レーン）に配置
   const eventsWithTracks = useMemo(() => {
-    const sortedEvents = [...timeline].sort((a, b) => a.time - b.time);
+    const sortedEvents = [...timeline].sort((a, b) => a.frame - b.frame);
     const tracks: EventWithTrack[][] = [];
 
     const result: EventWithTrack[] = sortedEvents.map((event) => {
       const eventDuration = getEventDuration(event);
-      const eventEnd = event.time + eventDuration;
+      const eventEnd = event.frame + eventDuration;
 
       // 空いているトラックを探す
       let trackIndex = 0;
       while (trackIndex < tracks.length) {
         const track = tracks[trackIndex];
         const canFit = track.every((existingEvent) => {
-          const existingEnd = existingEvent.time + getEventDuration(existingEvent);
-          return event.time >= existingEnd || eventEnd <= existingEvent.time;
+          const existingEnd = existingEvent.frame + getEventDuration(existingEvent);
+          return event.frame >= existingEnd || eventEnd <= existingEvent.frame;
         });
 
         if (canFit) break;
@@ -379,7 +386,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
         ...event,
         track: trackIndex,
         width: (eventDuration / duration) * 100 * zoom,
-        left: (event.time / duration) * 100,
+        left: (event.frame / duration) * 100,
       };
 
       tracks[trackIndex].push(eventWithTrack);
@@ -406,8 +413,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   };
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTime = parseFloat(e.target.value);
-    onSeek(newTime);
+    const newFrame = snapFrame(parseFloat(e.target.value));
+    onSeek(newFrame);
   };
 
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -415,8 +422,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     const clickX = e.clientX - rect.left;
     // ドラッグと同じ計算式: (clickX / timelineWidth) * duration / zoom
     const timelineWidth = rect.width;
-    const clickTime = (clickX / timelineWidth) * duration;
-    onSeek(Math.max(0, Math.min(duration, clickTime)));
+    const clickFrame = snapFrame((clickX / timelineWidth) * duration);
+    onSeek(Math.max(0, Math.min(duration, clickFrame)));
   };
 
   const handleTimelineDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -424,15 +431,15 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     const clickX = e.clientX - rect.left;
     // ドラッグと同じ計算式: (clickX / timelineWidth) * duration / zoom
     const timelineWidth = rect.width;
-    const clickTime = (clickX / timelineWidth) * duration;
+    const clickFrame = snapFrame((clickX / timelineWidth) * duration);
     if (onInsertEvent) {
-      onInsertEvent(Math.max(0, Math.min(duration, clickTime)), {
+      onInsertEvent(Math.max(0, Math.min(duration, clickFrame)), {
         action: "setExpression",
         args: {
           id: "",
         },
       });
-      console.log(`Created expression event at time ${clickTime.toFixed(2)}s`);
+      console.log(`Created expression event at frame ${clickFrame}`);
     }
   };
 
@@ -453,30 +460,31 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     setShowInsertMenu(false);
   };
 
-  const formatTime = (time: number) => {
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  // frame→秒表示（mm:ss）
+  const formatTime = (frame: number) => {
+    const seconds = frameToSeconds(frame);
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // 時間軸の目盛りを生成
+  // 秒単位の目盛り生成（fpsでframe→秒変換）
   const generateTimeMarks = () => {
     const marks = [];
-    const interval = duration <= 10 ? 1 : duration <= 30 ? 5 : 10;
-
-    for (let time = 0; time <= duration; time += interval) {
-      const position = (time / duration) * 100;
-      marks.push({ time, position });
+    // 目盛り間隔（秒）
+    const totalSeconds = frameToSeconds(duration);
+    const interval = totalSeconds <= 10 ? 1 : totalSeconds <= 30 ? 5 : 10;
+    for (let sec = 0; sec <= totalSeconds; sec += interval) {
+      const frame = Math.round(sec * fps);
+      const position = (frame / duration) * 100;
+      marks.push({ sec, frame, position });
     }
-
-    // 最後の時刻を必ず含める
-    if (marks[marks.length - 1]?.time !== duration) {
-      marks.push({ time: duration, position: 100 });
+    // 最後の目盛り
+    if (marks[marks.length - 1]?.frame !== duration) {
+      marks.push({ sec: totalSeconds, frame: duration, position: 100 });
     }
-
     return marks;
   };
-
   const timeMarks = generateTimeMarks();
 
   // ツールチップの位置を動的に調整する関数
@@ -531,7 +539,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
 
         {/* 現在時刻表示 */}
         <div className="flex items-center space-x-4 text-sm">
-          <span className="font-mono text-blue-400">{formatTime(currentTime)}</span>
+          <span className="font-mono text-blue-400">{formatTime(currentFrame)}</span>
           <span className="text-gray-500">/</span>
           <span className="font-mono text-gray-400">{formatTime(duration)}</span>
         </div>
@@ -603,11 +611,11 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   >
                     {/* 目盛り線 */}
                     <div className="w-px h-2 bg-gray-500"></div>
-                    {/* 時間ラベル */}
+                    {/* 秒ラベル */}
                     <span className="text-xs text-gray-400 mt-1 select-none">
-                      {mark.time === Math.floor(mark.time)
-                        ? `${mark.time}`
-                        : `${mark.time.toFixed(1)}`}
+                      {mark.sec === Math.floor(mark.sec)
+                        ? `${mark.sec}s`
+                        : `${mark.sec.toFixed(1)}s`}
                     </span>
                   </div>
                 ))}
@@ -627,7 +635,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 <div
                   className="absolute top-0 w-1 h-full bg-white rounded shadow-lg z-50"
                   style={{
-                    left: `${(currentTime / duration) * 100}%`,
+                    left: `${(currentFrame / duration) * 100}%`,
                     transform: "translateX(-50%)",
                   }}
                 ></div>
@@ -635,7 +643,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 {/* 再生済み部分 */}
                 <div
                   className="absolute top-0 left-0 h-full bg-blue-500 rounded opacity-30"
-                  style={{ width: `${(currentTime / duration) * 100}%` }}
+                  style={{ width: `${(currentFrame / duration) * 100}%` }}
                 ></div>
               </div>
               {/* 計算済み領域の表示（背景バー） */}
@@ -704,7 +712,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                         if (onEventSelect) {
                           onEventSelect(event);
                         } else {
-                          onSeek(event.time);
+                          onSeek(event.frame);
                         }
                         // イベントマーカー選択時は必ずEventタブに切り替え
                         setActiveTab("events");
@@ -718,7 +726,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                           event,
                         });
                       }}
-                      title={`${event.action} at ${event.time.toFixed(2)}s (ドラッグで移動可能)`}
+                      title={`${event.action} at frame ${event.frame} (ドラッグで移動可能)`}
                     >
                       {/* イベント内容 */}
                       <div className="px-2 py-1 text-xs text-white font-medium truncate select-none">
@@ -732,7 +740,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                         style={{ zIndex: 10000 }}
                       >
                         <div className="font-medium">{event.action}</div>
-                        <div className="text-gray-300">時刻: {event.time.toFixed(3)}s</div>
+                        <div className="text-gray-300">フレーム: {event.frame}</div>
                         <div className="text-gray-400 break-words">
                           {JSON.stringify(event.args, null, 1)}
                         </div>
@@ -754,7 +762,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 } else if ("state" in item) {
                   // StateEvent（状態マーカー）
                   const stateEvent = item as StateEvent;
-                  const position = (stateEvent.time / duration) * 100;
+                  const position = (stateEvent.frame / duration) * 100;
                   const isDragging =
                     dragState &&
                     dragState.type === "state" &&
@@ -790,7 +798,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                           } else if (item.id) {
                             setSelectedIds([item.id]);
                           }
-                          onSeek(item.time);
+                          onSeek(item.frame);
                           if (onStateSelect && "state" in item) onStateSelect(item);
                           // 種類に応じてタブ切り替え
                           if ("state" in item) {
@@ -799,7 +807,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                             setActiveTab("events");
                           }
                         }}
-                        title={`State Event at ${formatTime(stateEvent.time)}`}
+                        title={`State Event at frame ${stateEvent.frame}`}
                       >
                         {/* StateEventのツールチップ */}
                         <div
@@ -809,7 +817,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                           style={{ zIndex: 10000 }}
                         >
                           <div className="font-medium text-green-300">State Event</div>
-                          <div className="text-gray-300">時刻: {formatTime(stateEvent.time)}</div>
+                          <div className="text-gray-300">フレーム: {stateEvent.frame}</div>
                           <div className="text-gray-400 break-words">
                             {stateEvent.description || "Captured state"}
                           </div>
@@ -835,7 +843,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 } else if ("properties" in item && "type" in item && item.type === "expression") {
                   // ExpressionEvent（仮実装例）
                   const exprEvent = item as ExpressionEvent;
-                  const position = (exprEvent.time / duration) * 100;
+                  const position = (exprEvent.frame / duration) * 100;
                   const isSelected = exprEvent.id ? selectedIds.includes(exprEvent.id) : false;
                   return (
                     <div
@@ -858,10 +866,10 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                           } else if (exprEvent.id) {
                             setSelectedIds([exprEvent.id]);
                           }
-                          onSeek(exprEvent.time);
+                          onSeek(exprEvent.frame);
                           setActiveTab("events");
                         }}
-                        title={`Expression Event at ${formatTime(exprEvent.time)}`}
+                        title={`Expression Event at frame ${exprEvent.frame}`}
                       >
                         {/* ...ツールチップ等は既存流用... */}
                       </div>
@@ -957,7 +965,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
               min={0}
               max={duration}
               step={0.1}
-              value={currentTime}
+              value={currentFrame}
               onChange={handleSliderChange}
               className="w-full h-6 bg-transparent appearance-none cursor-pointer relative z-10"
               style={{
@@ -971,8 +979,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
         {/* 詳細な時間情報と凡例 */}
         <div className="flex justify-between items-center text-xs text-gray-500 mt-3">
           <div className="flex space-x-4">
-            <span>進行率: {((currentTime / duration) * 100).toFixed(1)}%</span>
-            <span>残り時間: {formatTime(duration - currentTime)}</span>
+            <span>進行率: {((currentFrame / duration) * 100).toFixed(1)}%</span>
+            <span>残り時間: {formatTime(duration - currentFrame)}</span>
           </div>
           <div className="flex items-center space-x-4">
             {/* 凡例 */}

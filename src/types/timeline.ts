@@ -18,7 +18,7 @@ export interface DesmosExpression {
   fillOpacity?: number | string;
   points?: boolean;
   lines?: boolean;
-  fill?: boolean;
+  frame: number;
   hidden?: boolean;
   secret?: boolean;
 
@@ -81,7 +81,7 @@ export interface DesmosExpression {
 // 統合されたイベント型 - すべてのイベントを一つの型で管理
 export interface UnifiedEvent {
   id: string;
-  time: number;
+  frame: number;
   type: "expression" | "bounds" | "animation";
   // Expression event properties
   properties?: Partial<DesmosExpression>;
@@ -92,11 +92,11 @@ export interface UnifiedEvent {
     top: number;
     bottom: number;
   };
-  // Animation event properties - 新しい詳細なアニメーション設定
+  // Animation event properties - フレーム数基準
   animation?: {
     type: "variable" | "property" | "action";
     targetId: string; // 対象のexpression ID
-    duration: number; // アニメーション時間（秒）
+    durationFrames: number; // アニメーションフレーム数
 
     // 変数アニメーション用
     variable?: {
@@ -126,25 +126,25 @@ export interface UnifiedEvent {
 
 // Legacy compatibility - 既存のコードとの互換性のため
 export interface ExpressionEvent {
-  time: number;
+  frame: number;
   type: "expression";
   id: string; // expression ID
   properties: Partial<DesmosExpression>; // 変更するプロパティ
 }
 
 export interface TimelineEvent {
-  time: number;
+  frame: number;
   action: "setExpression" | "setMathBounds" | "startAnimation" | "endAnimation";
   args: Record<string, unknown>;
-  id?: string;
+  id: string;
 }
 
 // 新しいStateEventインターface
 export interface StateEvent {
-  time: number;
+  frame: number;
   type: "state";
   state: DesmosState;
-  id?: string;
+  id: string;
   description?: string;
 }
 
@@ -152,8 +152,8 @@ export interface StateEvent {
 export type TimelineItem = TimelineEvent | StateEvent | ExpressionEvent;
 
 export interface ContinuousEvent {
-  startTime: number;
-  duration: number;
+  startFrame: number;
+  durationFrames: number;
   variable: string;
   startValue: number;
   endValue: number;
@@ -163,12 +163,12 @@ export interface ContinuousEvent {
 }
 
 export interface AnimationEvent {
-  time: number;
+  frame: number;
   type: "animation";
   variable: string;
   startValue?: number;
   endValue?: number;
-  duration?: number;
+  durationFrames?: number;
   id?: string;
 }
 
@@ -177,23 +177,23 @@ export interface AnimationProject {
   timeline: TimelineEvent[];
   stateEvents: StateEvent[];
   continuousEvents: ContinuousEvent[];
-  duration: number;
+  durationFrames: number;
   fps?: number;
 }
 
 export interface CheckpointState {
-  time: number;
+  frame: number;
   state: DesmosState;
 }
 
 export interface StateCache {
   snapshots: Map<number, DesmosState>;
-  lastCalculatedTime: number;
+  lastCalculatedFrame: number;
 }
 
 export interface StateManager {
-  getStateAtTime: (time: number) => DesmosState;
-  createCheckpoint: (time: number, state: DesmosState) => void;
+  getStateAtFrame: (frame: number) => DesmosState;
+  createCheckpoint: (frame: number, state: DesmosState) => void;
   clearCache: () => void;
   applyStateToCalculator: (state: DesmosState, calculator: Calculator) => void;
 }
@@ -201,7 +201,7 @@ export interface StateManager {
 // 動画エクスポート設定の型定義
 export interface VideoExportSettings {
   // 基本設定
-  duration: number; // 秒
+  durationFrames: number; // フレーム数
   fps: number; // フレームレート
 
   // 解像度設定

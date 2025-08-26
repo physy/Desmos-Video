@@ -10,14 +10,14 @@ interface UseStateManagerOptions {
 
 interface UseStateManagerReturn {
   stateManager: StateManager | null;
-  applyStateAtTime: (time: number) => Promise<void>;
+  applyStateAtFrame: (frame: number) => Promise<void>;
   addEvent: (event: UnifiedEvent) => void;
   updateEvent: (eventId: string, updates: Partial<UnifiedEvent>) => boolean;
   removeEvent: (eventId: string) => boolean;
   addStateEvent: (stateEvent: StateEvent) => void;
-  createStateEventFromCurrentCalculator: (time: number, description?: string) => StateEvent | null;
+  createStateEventFromCurrentCalculator: (frame: number, description?: string) => StateEvent | null;
   clearCache: () => void;
-  debugStateCalculation: (time: number) => Promise<{
+  debugStateCalculation: (frame: number) => Promise<{
     eventsApplied: Array<UnifiedEvent | StateEvent>;
     finalState: DesmosState;
   } | null>;
@@ -129,8 +129,8 @@ export function useStateManager({
   }, [desmosReady, autoCreateComputeCalculator]);
 
   // 指定時刻の状態を表示用calculatorに適用
-  const applyStateAtTime = useCallback(
-    async (time: number) => {
+  const applyStateAtFrame = useCallback(
+    async (frame: number) => {
       if (!stateManagerRef.current || !displayCalculator) {
         console.warn("[useStateManager] StateManager or display calculator not available");
         return;
@@ -145,10 +145,10 @@ export function useStateManager({
       }
 
       try {
-        await stateManagerRef.current.applyStateAtTime(time, displayCalculator);
-        console.log(`[useStateManager] Successfully applied state at time ${time}s`);
+        await stateManagerRef.current.applyStateAtFrame(frame, displayCalculator);
+        console.log(`[useStateManager] Successfully applied state at frame ${frame}`);
       } catch (error) {
-        console.error(`[useStateManager] Failed to apply state at time ${time}:`, error);
+        console.error(`[useStateManager] Failed to apply state at frame ${frame}:`, error);
       }
     },
     [displayCalculator]
@@ -180,12 +180,12 @@ export function useStateManager({
 
   // 現在のcalculatorの状態からStateEventを作成
   const createStateEventFromCurrentCalculator = useCallback(
-    (time: number, description?: string): StateEvent | null => {
+    (frame: number, description?: string): StateEvent | null => {
       if (!stateManagerRef.current || !displayCalculator) return null;
 
       try {
         return stateManagerRef.current.createStateEventFromCalculator(
-          time,
+          frame,
           displayCalculator,
           description
         );
@@ -204,13 +204,13 @@ export function useStateManager({
   }, []);
 
   // デバッグ用：状態計算過程を表示
-  const debugStateCalculation = useCallback(async (time: number) => {
+  const debugStateCalculation = useCallback(async (frame: number) => {
     if (!stateManagerRef.current) return null;
 
     try {
-      return await stateManagerRef.current.debugStateCalculation(time);
+      return await stateManagerRef.current.debugStateCalculation(frame);
     } catch (error) {
-      console.error(`[useStateManager] Debug calculation failed for time ${time}:`, error);
+      console.error(`[useStateManager] Debug calculation failed for frame ${frame}:`, error);
       return null;
     }
   }, []);
@@ -223,7 +223,7 @@ export function useStateManager({
 
   return {
     stateManager: stateManagerRef.current,
-    applyStateAtTime,
+    applyStateAtFrame,
     addEvent,
     updateEvent,
     removeEvent,

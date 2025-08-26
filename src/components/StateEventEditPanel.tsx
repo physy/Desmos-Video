@@ -150,7 +150,7 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
       // 新規StateEvent挿入
       const parsed = JSON.parse(editingStateJson);
       onStateUpdate({
-        time: newStateTime,
+        frame: newStateTime,
         type: "state",
         state: parsed,
         id: `state_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -168,12 +168,12 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
       <div className="p-4 space-y-4 state-event-edit-panel">
         <h2 className="text-lg font-semibold">新規State挿入</h2>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">実行時刻（秒）</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">実行フレーム</label>
           <input
             type="number"
             value={newStateTime}
-            onChange={(e) => setNewStateTime(parseFloat(e.target.value))}
-            step="0.1"
+            onChange={(e) => setNewStateTime(parseInt(e.target.value))}
+            step="1"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
@@ -223,12 +223,12 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
       </div>
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">実行時刻（秒）</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">実行フレーム</label>
           <input
             type="number"
-            value={editingState.time}
-            onChange={(e) => handleStateChange({ time: parseFloat(e.target.value) })}
-            step="0.1"
+            value={editingState.frame}
+            onChange={(e) => handleStateChange({ frame: parseInt(e.target.value) })}
+            step="1"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>

@@ -6,6 +6,9 @@ interface DesmosGraphProps {
   onCalculatorReady?: (calculator: Calculator) => void;
   className?: string;
   aspectRatio?: number; // 縦横比 (width/height) デフォルト: 16/9
+  currentFrame?: number;
+  stateManager?: any;
+  fps?: number;
 }
 
 export const DesmosGraph: React.FC<DesmosGraphProps> = ({
@@ -13,7 +16,28 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
   onCalculatorReady,
   className = "w-full h-full",
   aspectRatio = 16 / 9, // フルHDのアスペクト比をデフォルトに
+  currentFrame,
+  stateManager,
+  fps = 30,
 }) => {
+  // frame→秒変換関数
+  const frameToSeconds = (frame: number) => (fps ? frame / fps : frame / 30);
+  // 例: 現在フレームの秒数表示（UIに追加する場合）
+  // <div>現在: {currentFrame}フレーム ({frameToSeconds(currentFrame).toFixed(2)}秒)</div>
+  // currentFrameが変化したらstateManagerから状態を取得してcalculatorへ反映
+  useEffect(() => {
+    if (!calculatorRef.current || !stateManager || typeof currentFrame !== "number") return;
+    (async () => {
+      try {
+        const state = await stateManager.getStateAtFrame(currentFrame);
+        if (state && typeof stateManager.applyStateToCalculator === "function") {
+          stateManager.applyStateToCalculator(state, calculatorRef.current);
+        }
+      } catch (e) {
+        console.warn("Failed to apply state at frame", currentFrame, e);
+      }
+    })();
+  }, [currentFrame, stateManager]);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const calculatorRef = useRef<Calculator | null>(null);

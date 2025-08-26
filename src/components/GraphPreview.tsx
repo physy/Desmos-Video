@@ -3,21 +3,27 @@ import type { Calculator } from "../types/desmos";
 
 interface GraphPreviewProps {
   computeCalculator: Calculator | null;
-  currentTime: number;
+  currentFrame: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   stateManager: any; // StateManager型
   videoSettings?: {
     resolution: { width: number; height: number };
     bounds?: { left: number; right: number; top: number; bottom: number };
   };
+  fps?: number;
 }
 
 const GraphPreview: React.FC<GraphPreviewProps> = ({
   computeCalculator,
-  currentTime,
+  currentFrame,
   stateManager,
   videoSettings,
+  fps = 30,
 }) => {
+  // frame→秒変換関数
+  const frameToSeconds = (frame: number) => (fps ? frame / fps : frame / 30);
+  // 例: 現在フレームの秒数表示（UIに追加する場合）
+  // <div>現在: {currentFrame}フレーム ({frameToSeconds(currentFrame).toFixed(2)}秒)</div>
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -26,8 +32,11 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
     const generatePreview = async () => {
       if (!computeCalculator || !stateManager) return;
 
+      // fpsを使ったframe→秒変換例（必要ならUIやキャッシュキー等に利用）
+      // const seconds = currentFrame / fps;
+
       // まずキャッシュ済みスクリーンショットを取得
-      const cachedScreenshot = stateManager.getScreenshotAtTime(currentTime);
+      const cachedScreenshot = stateManager.getScreenshotAtFrame(currentFrame);
       if (cachedScreenshot) {
         console.log("Using cached screenshot");
         setImageUrl(cachedScreenshot);
@@ -37,7 +46,7 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
 
       setLoading(true);
       // 指定時刻の状態を計算用calculatorに適用
-      await stateManager.applyStateAtTime(currentTime, computeCalculator);
+      await stateManager.applyStateAtFrame(currentFrame, computeCalculator);
 
       // exportパネルの解像度・範囲を取得
       const width = videoSettings?.resolution?.width ?? 640;
@@ -55,8 +64,8 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
           if (!cancelled) {
             setImageUrl(url);
             // キャッシュ保存
-            if (typeof stateManager.setScreenshotAtTime === "function") {
-              stateManager.setScreenshotAtTime(currentTime, url);
+            if (typeof stateManager.setScreenshotAtFrame === "function") {
+              stateManager.setScreenshotAtFrame(currentFrame, url);
             }
           }
           setLoading(false);
@@ -67,16 +76,16 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
         if (typeof result === "string") {
           if (!cancelled) {
             setImageUrl(result);
-            if (typeof stateManager.setScreenshotAtTime === "function") {
-              stateManager.setScreenshotAtTime(currentTime, result);
+            if (typeof stateManager.setScreenshotAtFrame === "function") {
+              stateManager.setScreenshotAtFrame(currentFrame, result);
             }
           }
         } else if (typeof result === "undefined") {
           computeCalculator.screenshot({ width, height }, (url: string) => {
             if (!cancelled) {
               setImageUrl(url);
-              if (typeof stateManager.setScreenshotAtTime === "function") {
-                stateManager.setScreenshotAtTime(currentTime, url);
+              if (typeof stateManager.setScreenshotAtFrame === "function") {
+                stateManager.setScreenshotAtFrame(currentFrame, url);
               }
             }
           });
@@ -88,7 +97,7 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [computeCalculator, currentTime, stateManager, videoSettings]);
+  }, [computeCalculator, currentFrame, stateManager, videoSettings, fps]);
 
   return (
     <div className="w-full h-full flex items-center justify-center bg-gray-100">

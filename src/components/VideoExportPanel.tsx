@@ -5,6 +5,7 @@ export interface VideoExportPanelProps {
   videoSettings?: VideoExportSettings | null;
   onVideoSettingsChange?: (settings: VideoExportSettings) => void;
   currentDuration: number;
+  fps?: number;
   onSettingsChange?: (settings: VideoExportSettings) => void;
   onExportStart?: (settings: VideoExportSettings) => void;
 }
@@ -32,15 +33,18 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
   videoSettings,
   onVideoSettingsChange,
   currentDuration,
+  fps = 30,
   onSettingsChange,
   onExportStart,
 }) => {
+  // frame→秒変換関数
+  const frameToSeconds = (frame: number) => (fps ? frame / fps : frame / 30);
   const [settings, setSettings] = useState<VideoExportSettings>(() => {
     // 外部から渡された設定があればそれを使用、なければデフォルト
     return (
       videoSettings || {
-        duration: currentDuration,
-        fps: 30,
+        durationFrames: currentDuration * fps,
+        fps,
         resolution: {
           width: 1920,
           height: 1080,
@@ -76,8 +80,8 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
 
   // プロジェクト時間の変更を反映
   useEffect(() => {
-    setSettings((prev) => ({ ...prev, duration: currentDuration }));
-  }, [currentDuration]);
+    setSettings((prev) => ({ ...prev, durationFrames: currentDuration * (fps || 30), fps }));
+  }, [currentDuration, fps]);
 
   // 外部からの設定変更を反映
   useEffect(() => {
@@ -142,16 +146,17 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
 
   // 推定ファイルサイズ計算
   const estimateFileSize = () => {
-    const { duration } = settings;
-    const { bitrate = 5000 } = settings.quality;
+    const { durationFrames, quality } = settings;
+    const { bitrate = 5000 } = quality;
+    const duration = frameToSeconds(durationFrames);
     const sizeInMB = (bitrate * duration) / 8 / 1024; // kbps to MB
     return sizeInMB.toFixed(1);
   };
 
   // 推定レンダリング時間計算
   const estimateRenderTime = () => {
-    const { duration, fps } = settings;
-    const totalFrames = duration * fps;
+    const { durationFrames } = settings;
+    const totalFrames = durationFrames;
     const estimatedSeconds = totalFrames * 0.5; // フレームあたり0.5秒と仮定
     return Math.ceil(estimatedSeconds / 60); // 分単位
   };
@@ -171,8 +176,8 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
             <label className="block text-xs font-medium text-gray-600 mb-1">動画の長さ (秒)</label>
             <input
               type="number"
-              value={settings.duration}
-              onChange={(e) => handleSettingsChange({ duration: parseFloat(e.target.value) })}
+              value={settings.durationFrames}
+              onChange={(e) => handleSettingsChange({ durationFrames: parseFloat(e.target.value) })}
               min="0.1"
               step="0.1"
               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -487,7 +492,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
       <div className="space-y-2 pt-4 border-t">
         <h3 className="text-xs font-medium text-gray-500">推定情報</h3>
         <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded space-y-1">
-          <div>総フレーム数: {(settings.duration * settings.fps).toFixed(0)} フレーム</div>
+          <div>総フレーム数: {settings.durationFrames} フレーム</div>
           <div>推定ファイルサイズ: {estimateFileSize()} MB</div>
           <div>推定レンダリング時間: 約 {estimateRenderTime()} 分</div>
           <div>
