@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { Calculator, GraphingCalculatorOptions } from "../types/desmos";
+import type { StateManager } from "../utils/stateManager";
 
 interface DesmosGraphProps {
   options?: GraphingCalculatorOptions;
@@ -7,7 +8,7 @@ interface DesmosGraphProps {
   className?: string;
   aspectRatio?: number; // 縦横比 (width/height) デフォルト: 16/9
   currentFrame?: number;
-  stateManager?: any;
+  stateManager?: StateManager | null;
   fps?: number;
 }
 
@@ -30,7 +31,11 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
     (async () => {
       try {
         const state = await stateManager.getStateAtFrame(currentFrame);
-        if (state && typeof stateManager.applyStateToCalculator === "function") {
+        if (
+          calculatorRef.current &&
+          state &&
+          typeof stateManager.applyStateToCalculator === "function"
+        ) {
           stateManager.applyStateToCalculator(state, calculatorRef.current);
         }
       } catch (e) {
@@ -61,7 +66,7 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
         keypad: false,
         expressions: true,
         expressionsCollapsed: true,
-        settingsMenu: false,
+        settingsMenu: true,
         zoomButtons: false,
         expressionsTopbar: true,
         pointsOfInterest: false,
@@ -70,6 +75,7 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
         lockViewport: false,
         branding: false,
         pasteGraphLink: true,
+        language: "ja",
         ...optionsRef.current,
       };
 
@@ -97,7 +103,7 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
 
       const script = document.createElement("script");
       script.src =
-        "https://www.desmos.com/api/v1.11/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6&showIDs=true";
+        "https://www.desmos.com/api/v1.11/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6&lang=ja";
       script.async = true;
       script.onload = () => {
         if (mounted) {

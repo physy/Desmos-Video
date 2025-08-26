@@ -48,10 +48,12 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
       // 指定時刻の状態を計算用calculatorに適用
       await stateManager.applyStateAtFrame(currentFrame, computeCalculator);
 
-      // exportパネルの解像度・範囲を取得
-      const width = videoSettings?.resolution?.width ?? 640;
-      const height = videoSettings?.resolution?.height ?? 360;
-      const bounds = videoSettings?.bounds;
+      // StateManagerのvideoSettingsを優先して取得
+      const effectiveSettings = stateManager?.videoSettings ?? videoSettings;
+      const pixelRatio = effectiveSettings?.advanced?.targetPixelRatio ?? 1;
+      const width = Math.round((effectiveSettings?.resolution?.width ?? 1920) * pixelRatio);
+      const height = Math.round((effectiveSettings?.resolution?.height ?? 1080) * pixelRatio);
+      const bounds = effectiveSettings?.bounds;
 
       // 範囲指定があれば反映
       if (bounds) {

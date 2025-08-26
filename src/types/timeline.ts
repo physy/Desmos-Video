@@ -121,6 +121,11 @@ export interface UnifiedEvent {
 
     // イージング関数
     easing?: "linear" | "ease-in" | "ease-out" | "ease-in-out";
+
+    // 解像度・ピクセル比
+    width?: number;
+    height?: number;
+    pixelRatio?: number;
   };
 }
 

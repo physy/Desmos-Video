@@ -40,7 +40,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
   // frame→秒変換関数
   const frameToSeconds = (frame: number) => (fps ? frame / fps : frame / 30);
   const [settings, setSettings] = useState<VideoExportSettings>(() => {
-    // 外部から渡された設定があればそれを使用、なければデフォルト
+    // 外部から渡された設定があればそれを使用、なければフルHD(1080p)で初期化
     return (
       videoSettings || {
         durationFrames: currentDuration * fps,
@@ -59,7 +59,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
           codec: "h264",
         },
         advanced: {
-          targetPixelRatio: 2,
+          targetPixelRatio: 0.5,
           backgroundColor: "#ffffff",
           antialias: true,
           motionBlur: false,
@@ -373,9 +373,9 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
             </label>
             <input
               type="range"
-              min="1"
-              max="4"
-              step="0.5"
+              min="0.05"
+              max="2"
+              step="0.05"
               value={settings.advanced.targetPixelRatio}
               onChange={(e) =>
                 handleSettingsChange({

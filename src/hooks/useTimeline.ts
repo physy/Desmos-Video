@@ -95,6 +95,8 @@ const convertTimelineEventToUnifiedEvent = (timelineEvent: TimelineEvent): Unifi
 };
 
 export const useTimeline = (calculator: Calculator | null) => {
+  // isPlayingをrefでも管理
+  const isPlayingRef = useRef(false);
   const [project, setProject] = useState<AnimationProject>({
     initialState: {
       version: 11,
@@ -240,36 +242,36 @@ export const useTimeline = (calculator: Calculator | null) => {
 
   // アニメーション再生（StateManager使用）
   const play = useCallback(() => {
-    if (!calculator || isPlaying || !stateManager) return;
+    if (!calculator || isPlayingRef.current || !stateManager) return;
 
     setIsPlaying(true);
+    isPlayingRef.current = true;
     const startFrame = currentFrame;
     const fps = project.fps || 30;
     const startTime = Date.now();
 
+    // 再生ループを非同期で制御
     const animate = async () => {
+      // 再生停止条件を先頭で判定（refで判定）
+      if (!isPlayingRef.current) return;
+
       const elapsed = (Date.now() - startTime) / 1000;
       const newFrame = startFrame + Math.round(elapsed * fps);
       const currentProject = projectRef.current;
 
       if (newFrame >= currentProject.durationFrames) {
-        setCurrentFrame(currentProject.durationFrames);
-        setIsPlaying(false);
-
-        // 最終フレームの状態を適用
         try {
           await stateManager.getStateAtFrame(currentProject.durationFrames);
           lastAppliedFrameRef.current = currentProject.durationFrames;
         } catch (error) {
           console.error("[useTimeline] Failed to apply final state:", error);
         }
+        setCurrentFrame(currentProject.durationFrames);
+        setIsPlaying(false);
         return;
       }
 
-      setCurrentFrame(newFrame);
-
-      // 状態適用の頻度制御
-      const updateThreshold = 1; // 1フレーム
+      const updateThreshold = 1;
       const frameDiff = Math.abs(newFrame - lastAppliedFrameRef.current);
 
       if (frameDiff >= updateThreshold) {
@@ -281,15 +283,24 @@ export const useTimeline = (calculator: Calculator | null) => {
         }
       }
 
-      animationRef.current = requestAnimationFrame(animate);
+      setCurrentFrame(newFrame);
+      // requestAnimationFrameをawaitで制御
+      await new Promise<void>((resolve) => {
+        animationRef.current = requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+      // 再帰呼び出し前にも再生停止条件を判定
+      if (!isPlayingRef.current) return;
+      animate();
     };
-
-    animationRef.current = requestAnimationFrame(animate);
+    animate();
   }, [calculator, isPlaying, currentFrame, stateManager, project.fps]);
 
   // アニメーションを停止
   const pause = useCallback(() => {
     setIsPlaying(false);
+    isPlayingRef.current = false;
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
     }

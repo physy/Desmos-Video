@@ -36,7 +36,27 @@ function App() {
   const [selectedEvent, setSelectedEvent] = useState<
     TimelineEvent | StateEvent | { type: "initial" } | null
   >(null);
-  const [videoSettings, setVideoSettings] = useState<VideoExportSettings | null>(null);
+  // フルHD初期値
+  const DEFAULT_VIDEO_SETTINGS: VideoExportSettings = {
+    durationFrames: 300,
+    fps: 30,
+    resolution: {
+      width: 1920,
+      height: 1080,
+      preset: "1080p",
+    },
+    quality: { bitrate: 5000, preset: "standard" },
+    format: { container: "mp4", codec: "h264" },
+    advanced: {
+      targetPixelRatio: 1,
+      backgroundColor: "#ffffff",
+      antialias: true,
+      motionBlur: false,
+      frameInterpolation: false,
+    },
+    metadata: { title: "Desmos Animation", description: "", author: "", tags: [] },
+  };
+  const [videoSettings, setVideoSettings] = useState<VideoExportSettings>(DEFAULT_VIDEO_SETTINGS);
   const fps = videoSettings?.fps || 30;
   const [graphAspectRatio, setGraphAspectRatio] = useState<number>(16 / 9); // フルHDをデフォルト
 
@@ -101,15 +121,8 @@ function App() {
     [calculator]
   );
 
-  // 動画設定変更ハンドラー
-  const handleVideoSettingsChange = useCallback(
-    (settings: VideoExportSettings) => {
-      console.log("App: Video settings changed", settings);
-      setVideoSettings(settings);
-      adjustGraphAspectRatio(settings);
-    },
-    [adjustGraphAspectRatio]
-  );
+  // --- stateManager取得後に定義 ---
+  let handleVideoSettingsChange: (settings: VideoExportSettings) => void = () => {};
 
   const {
     project,
@@ -131,6 +144,19 @@ function App() {
     setProject,
     stateManager,
   } = useTimeline(calculator);
+
+  // 動画設定変更ハンドラー（stateManager取得後に定義）
+  handleVideoSettingsChange = useCallback(
+    (settings: VideoExportSettings) => {
+      console.log("App: Video settings changed", settings);
+      setVideoSettings(settings);
+      adjustGraphAspectRatio(settings);
+      if (stateManager) {
+        stateManager.videoSettings = settings;
+      }
+    },
+    [adjustGraphAspectRatio, stateManager]
+  );
 
   // イベント時間変更ハンドラー（ドラッグ対応）
   const handleEventTimeChange = useCallback(

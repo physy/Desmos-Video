@@ -20,7 +20,12 @@ export function getBlankDesmosState(): DesmosState {
   };
 }
 import type { Calculator, DesmosState } from "../types/desmos";
-import type { StateEvent, ContinuousEvent, UnifiedEvent } from "../types/timeline";
+import type {
+  StateEvent,
+  ContinuousEvent,
+  UnifiedEvent,
+  VideoExportSettings,
+} from "../types/timeline";
 import { deepCopy } from "./deepCopy";
 
 // デバッグモードのフラグ
@@ -34,6 +39,18 @@ const debugLog = (...args: unknown[]) => {
 };
 
 export class StateManager {
+  // 動画設定（VideoExportPanelから受け取る型に統一）
+  private _videoSettings?: VideoExportSettings;
+
+  // videoSettingsのgetter/setter
+  public get videoSettings(): VideoExportSettings | undefined {
+    return this._videoSettings;
+  }
+  public set videoSettings(settings: VideoExportSettings | undefined) {
+    this._videoSettings = settings;
+    this.clearCache(); // 設定変更時はキャッシュクリア
+    debugLog("Video settings updated:", settings);
+  }
   // 指定時刻のスクリーンショットをキャッシュに保存
   setScreenshotAtFrame(frame: number, screenshot: string) {
     const cache = this.stateCache.get(frame);
@@ -121,15 +138,48 @@ export class StateManager {
 
     const state = this.computeCalculator.getState();
 
-    let screenshot: string | undefined = undefined;
-    try {
-      screenshot = await (this.computeCalculator as any).getScreenshot();
-    } catch (e) {
-      debugLog("Screenshot capture failed:", e);
+    // 解像度・pixelRatio・背景色などをvideoSettingsから取得
+    let width = 1920;
+    let height = 1080;
+    let targetPixelRatio = 1;
+    let backgroundColor = "#fff";
+    if (this._videoSettings) {
+      if (this._videoSettings.resolution) {
+        width = this._videoSettings.resolution.width ?? width;
+        height = this._videoSettings.resolution.height ?? height;
+      }
+      if (this._videoSettings.advanced) {
+        targetPixelRatio = this._videoSettings.advanced.targetPixelRatio ?? targetPixelRatio;
+        backgroundColor = this._videoSettings.advanced.backgroundColor ?? backgroundColor;
+      }
     }
-
+    // ピクセル比を反映
+    width = Math.round(width * targetPixelRatio);
+    height = Math.round(height * targetPixelRatio);
+    // asyncScreenshotで非同期取得（全設定を反映）
+    let screenshot: string | undefined = undefined;
+    if (this.computeCalculator && typeof this.computeCalculator.asyncScreenshot === "function") {
+      screenshot = await new Promise<string | undefined>((resolve) => {
+        try {
+          console.log("Taking screenshot with settings:", {
+            width,
+            height,
+            targetPixelRatio,
+            backgroundColor,
+          });
+          this.computeCalculator!.asyncScreenshot(
+            { width, height, targetPixelRatio },
+            (url: string) => {
+              resolve(url);
+            }
+          );
+        } catch (e) {
+          debugLog("Screenshot capture failed:", e);
+          resolve(undefined);
+        }
+      });
+    }
     this.stateCache.set(frame, { state: deepCopy(state), screenshot });
-
     debugLog(`State and screenshot cached for frame ${frame}`);
     return deepCopy(state);
   }
@@ -194,10 +244,26 @@ export class StateManager {
     const animation = originalEvent.animation;
     const easedProgress = this.applyEasing(progress, animation.easing || "linear");
 
+    // videoSettingsから解像度・ピクセル比を取得
+    let width = 1920;
+    let height = 1080;
+    let pixelRatio = 1;
+    if (this._videoSettings) {
+      if (this._videoSettings.resolution) {
+        width = this._videoSettings.resolution.width ?? width;
+        height = this._videoSettings.resolution.height ?? height;
+      }
+      if (this._videoSettings.advanced) {
+        pixelRatio = this._videoSettings.advanced.targetPixelRatio ?? pixelRatio;
+      }
+    }
+    width = Math.round(width * pixelRatio);
+    height = Math.round(height * pixelRatio);
+
     // 補間されたアニメーションイベントを作成
     const interpolatedEvent: UnifiedEvent = {
       ...originalEvent,
-      animation: { ...animation },
+      animation: { ...animation, width, height, pixelRatio },
     };
 
     // アニメーションタイプに応じて値を補間
@@ -392,7 +458,7 @@ export class StateManager {
   }
 
   // StateをCalculatorに適用
-  private applyStateToCalculator(state: DesmosState, calculator: Calculator): void {
+  applyStateToCalculator(state: DesmosState, calculator: Calculator): void {
     try {
       calculator.setState(state);
       debugLog(`Applied state with ${state.expressions?.list?.length || 0} expressions`);
@@ -546,13 +612,17 @@ export class StateManager {
     const eventsApplied = this.getEventsUpToFrame(frame);
     debugLog(
       `Events to apply (${eventsApplied.length}):`,
-      eventsApplied.map((e) => ({ frame: (e as any).frame, type: e.type, id: e.id }))
+      eventsApplied.map((e) => ({
+        frame: "frame" in e ? e.frame : undefined,
+        type: e.type,
+        id: "id" in e ? e.id : undefined,
+      }))
     );
 
     for (const event of eventsApplied) {
-      debugLog(`Applying event at ${(event as any).frame}:`, event);
+      debugLog(`Applying event at ${"frame" in event ? event.frame : undefined}:`, event);
 
-      if ("type" in event && event.type === "state") {
+      if (event.type === "state") {
         await this.applyStateEventToComputeCalculator(event as StateEvent);
       } else {
         await this.applyUnifiedEventToComputeCalculator(event as UnifiedEvent);

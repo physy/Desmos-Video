@@ -349,7 +349,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   }, [multiDragState, duration, zoom, onEventTimeChange, onStateTimeChange, snapFrame]);
   const getEventDuration = (event: TimelineEvent): number => {
     if (event.action === "startAnimation") {
-      return (event.args.duration as number) || 1;
+      // animation eventはdurationFramesで管理
+      return (event.args.durationFrames as number) || 1;
     }
     return 0.1; // デフォルトの表示幅
   };
