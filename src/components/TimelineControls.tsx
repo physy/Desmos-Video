@@ -37,7 +37,7 @@ interface TimelineControlsProps {
   onEventDelete: (eventId: string) => void;
   onEventDuplicate: (event: TimelineEvent) => void;
   selectedEventId?: string;
-  setActiveTab: (tab: "state" | "events" | "timeline" | "graph" | "export") => void;
+  setActiveTab: (tab: "state" | "events" | "timeline" | "export") => void;
 }
 
 export const TimelineControls: React.FC<TimelineControlsProps> = ({

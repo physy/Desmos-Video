@@ -4,7 +4,7 @@ import { TimelineControls } from "./components/TimelineControls";
 import GraphPreview from "./components/GraphPreview";
 import type { StateEvent } from "./types/timeline";
 import { UnifiedEventEditPanel } from "./components/UnifiedEventEditPanel";
-import { GraphConfigPanel } from "./components/GraphConfigPanel";
+// ...existing code...
 import { VideoExportPanel } from "./components/VideoExportPanel";
 import { ResizablePanel } from "./components/ResizablePanel";
 import { useTimeline } from "./hooks/useTimeline";
@@ -30,9 +30,7 @@ function App() {
     }
   }, []);
   const [calculator, setCalculator] = useState<Calculator | null>(null);
-  const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline" | "graph" | "export">(
-    "events"
-  );
+  const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline" | "export">("events");
   const [selectedEvent, setSelectedEvent] = useState<
     TimelineEvent | StateEvent | { type: "initial" } | null
   >(null);
@@ -433,16 +431,6 @@ function App() {
                       Event
                     </button>
                     <button
-                      onClick={() => setActiveTab("graph")}
-                      className={`flex-1 px-2 py-2 text-xs font-medium ${
-                        activeTab === "graph"
-                          ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
-                          : "text-gray-500 hover:text-gray-700"
-                      }`}
-                    >
-                      Graph
-                    </button>
-                    <button
                       onClick={() => setActiveTab("export")}
                       className={`flex-1 px-2 py-2 text-xs font-medium ${
                         activeTab === "export"
@@ -538,17 +526,6 @@ function App() {
                               removeEvent(selectedEvent.id);
                               setSelectedEvent(null);
                             }
-                          }}
-                        />
-                      </div>
-                    )}
-
-                    {activeTab === "graph" && (
-                      <div className="h-full">
-                        <GraphConfigPanel
-                          calculator={calculator}
-                          onConfigUpdate={(config) => {
-                            console.log("Graph config updated:", config);
                           }}
                         />
                       </div>
