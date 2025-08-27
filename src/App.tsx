@@ -19,8 +19,76 @@ const DEBUG_MODE = false;
 function App() {
   // ファイルメニューのドロップダウン表示状態
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
-  // ドロップダウンメニュー項目定義
+  // calculatorのuseState宣言を先に（重複宣言があれば削除）
+  const [calculator, setCalculator] = useState<Calculator | null>(null);
+  // useTimelineの呼び出し（重複宣言があれば削除）
+  const {
+    project,
+    currentFrame,
+    isPlaying,
+    seekTo,
+    play,
+    pause,
+    addEvent,
+    insertEvent,
+    removeEvent,
+    updateEvent,
+    updateUnifiedEvent,
+    getUnifiedEvent,
+    captureCurrentState,
+    clearCache,
+    getDebugInfo,
+    getDebugAtFrame,
+    setProject,
+    stateManager,
+  } = useTimeline(calculator);
+
+  // 保存・読み込みコールバックはuseTimelineの後で定義
+  const handleSaveProject = useCallback(() => {
+    const dataStr = JSON.stringify(project, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "desmos_project.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    setFileMenuOpen(false);
+  }, [project]);
+
+  const handleLoadProject = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const json = JSON.parse(ev.target?.result as string);
+          setProject(json);
+        } catch (err) {
+          alert("読み込みに失敗しました: " + err);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+    setFileMenuOpen(false);
+  }, [setProject]);
+
   const fileMenuItems = [
+    {
+      label: "保存",
+      onClick: handleSaveProject,
+      className: "hover:bg-blue-50",
+    },
+    {
+      label: "読み込み",
+      onClick: handleLoadProject,
+      className: "hover:bg-blue-50",
+    },
     {
       label: "デモイベント追加",
       onClick: () => {
@@ -82,12 +150,6 @@ function App() {
           },
         ]
       : []),
-    {
-      label: "エクスポート",
-      onClick: () => {
-        setFileMenuOpen(false);
-      },
-    },
   ];
   // メニュー外クリックで閉じる
   useEffect(() => {
@@ -113,7 +175,6 @@ function App() {
       }
     }
   }, []);
-  const [calculator, setCalculator] = useState<Calculator | null>(null);
   const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline" | "export">("events");
   const [selectedEvent, setSelectedEvent] = useState<
     TimelineEvent | StateEvent | { type: "initial" } | null
@@ -205,27 +266,6 @@ function App() {
 
   // --- stateManager取得後に定義 ---
   let handleVideoSettingsChange: (settings: VideoExportSettings) => void = () => {};
-
-  const {
-    project,
-    currentFrame,
-    isPlaying,
-    seekTo,
-    play,
-    pause,
-    addEvent,
-    insertEvent,
-    removeEvent,
-    updateEvent,
-    updateUnifiedEvent,
-    getUnifiedEvent,
-    captureCurrentState,
-    clearCache,
-    getDebugInfo,
-    getDebugAtFrame,
-    setProject,
-    stateManager,
-  } = useTimeline(calculator);
 
   // 動画設定変更ハンドラー（stateManager取得後に定義）
   handleVideoSettingsChange = useCallback(
