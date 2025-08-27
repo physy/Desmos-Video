@@ -17,6 +17,90 @@ import { StateEventEditPanel } from "./components/StateEventEditPanel";
 const DEBUG_MODE = false;
 
 function App() {
+  // ファイルメニューのドロップダウン表示状態
+  const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  // ドロップダウンメニュー項目定義
+  const fileMenuItems = [
+    {
+      label: "デモイベント追加",
+      onClick: () => {
+        addDemoEvents();
+        setFileMenuOpen(false);
+      },
+    },
+    {
+      label: "Stateキャプチャ",
+      onClick: () => {
+        handleCaptureState();
+        setFileMenuOpen(false);
+      },
+    },
+    {
+      label: "チェックポイント",
+      onClick: () => {
+        handleCreateCheckpoint();
+        setFileMenuOpen(false);
+      },
+    },
+    {
+      label: "キャッシュクリア",
+      onClick: () => {
+        clearCache();
+        setFileMenuOpen(false);
+      },
+    },
+    ...(DEBUG_MODE
+      ? [
+          {
+            label: "Debug",
+            onClick: () => {
+              handleShowDebugInfo();
+              setFileMenuOpen(false);
+            },
+            className: "hover:bg-gray-100",
+          },
+          {
+            label: "2s Debug",
+            onClick: async () => {
+              console.log("=== StateManagerデバッグ ===");
+              const debugInfo = getDebugInfo();
+              console.log("Debug info:", debugInfo);
+              try {
+                await seekTo(1.9);
+                setTimeout(async () => {
+                  console.log("State at 1.9s:", calculator?.getExpressions());
+                  await seekTo(2.1);
+                  setTimeout(() => {
+                    console.log("State at 2.1s:", calculator?.getExpressions());
+                  }, 100);
+                }, 100);
+              } catch (e) {
+                console.error("Error during state comparison:", e);
+              }
+              setFileMenuOpen(false);
+            },
+          },
+        ]
+      : []),
+    {
+      label: "エクスポート",
+      onClick: () => {
+        setFileMenuOpen(false);
+      },
+    },
+  ];
+  // メニュー外クリックで閉じる
+  useEffect(() => {
+    if (!fileMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      const menu = document.getElementById("file-menu-dropdown");
+      if (menu && !menu.contains(e.target as Node)) {
+        setFileMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [fileMenuOpen]);
   // ページロード時に?showIDs=trueを自動追加
   // グラフ表示/プレビュー表示のタブ状態
   const [graphViewTab, setGraphViewTab] = useState<"graph" | "preview">("graph");
@@ -262,77 +346,43 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-100 overflow-hidden">
-      {/* ヘッダー */}
-      <header className="bg-white shadow-sm border-b border-gray-200 p-3 flex-shrink-0">
-        <div className="flex justify-between items-center">
-          <h1 className="text-xl font-bold text-gray-900">Desmos Animation Studio</h1>
-          <div className="space-x-2">
-            <button
-              onClick={addDemoEvents}
-              className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
-            >
-              デモイベント追加
-            </button>
-            <button
-              onClick={handleCaptureState}
-              className="px-2 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700"
-              title="現在のstateをキャプチャ"
-            >
-              Stateキャプチャ
-            </button>
-            <button
-              onClick={handleCreateCheckpoint}
-              className="px-2 py-1 bg-purple-600 text-white text-xs rounded hover:bg-purple-700"
-              title="現在時刻でチェックポイント作成"
-            >
-              チェックポイント
-            </button>
-            <button
-              onClick={clearCache}
-              className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
-              title="キャッシュクリア"
-            >
-              キャッシュクリア
-            </button>
-            {DEBUG_MODE && (
-              <>
-                <button
-                  onClick={handleShowDebugInfo}
-                  className="px-2 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700"
-                  title="デバッグ情報表示"
+      {/* メニューバー＋ヘッダー統合 */}
+      <header className="bg-white shadow-sm border-b border-gray-200 px-2 h-12 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center">
+          {/* メニュー */}
+          <div className="flex items-center mr-4">
+            <div className="menu-item relative mr-2">
+              <button
+                className="font-semibold text-gray-700 hover:text-blue-600 focus:outline-none px-2 py-1 rounded"
+                onClick={() => setFileMenuOpen((open) => !open)}
+                aria-haspopup="true"
+                aria-expanded={fileMenuOpen}
+              >
+                ファイル
+              </button>
+              {/* ドロップダウンメニュー（クリックで表示） */}
+              {fileMenuOpen && (
+                <div
+                  id="file-menu-dropdown"
+                  className="absolute left-0 mt-1 w-44 bg-white border border-gray-200 rounded shadow-lg z-10"
                 >
-                  Debug
-                </button>
-                <button
-                  onClick={async () => {
-                    console.log("=== StateManagerデバッグ ===");
-                    const debugInfo = getDebugInfo();
-                    console.log("Debug info:", debugInfo);
-
-                    // 2s前後の状態を比較
-                    try {
-                      await seekTo(1.9);
-                      setTimeout(async () => {
-                        console.log("State at 1.9s:", calculator?.getExpressions());
-                        await seekTo(2.1);
-                        setTimeout(() => {
-                          console.log("State at 2.1s:", calculator?.getExpressions());
-                        }, 100);
-                      }, 100);
-                    } catch (e) {
-                      console.error("Error during state comparison:", e);
-                    }
-                  }}
-                  className="px-2 py-1 bg-yellow-600 text-white text-xs rounded hover:bg-yellow-700"
-                  title="2sイベント問題をデバッグ"
-                >
-                  2s Debug
-                </button>
-              </>
-            )}
-            <button className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">
-              エクスポート
-            </button>
+                  {fileMenuItems.map((item, idx) => (
+                    <button
+                      key={item.label + idx}
+                      onClick={item.onClick}
+                      className={`w-full text-left px-4 py-2 text-sm text-gray-700 ${item.className} hover:bg-gray-100`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="menu-item relative mr-2">
+              <button className="font-semibold text-gray-700 hover:text-blue-600 px-2 py-1 rounded">
+                編集
+              </button>
+            </div>
           </div>
         </div>
       </header>
