@@ -631,10 +631,8 @@ function App() {
                           onSettingsChange={(settings) => {
                             console.log("Video export settings updated:", settings);
                           }}
-                          onExportStart={(settings) => {
-                            console.log("Starting video export with settings:", settings);
-                            // TODO: 実際のエクスポート処理を実装
-                          }}
+                          stateManager={stateManager}
+                          calculator={stateManager?.getComputeCalculator() || null}
                         />
                       </div>
                     )}

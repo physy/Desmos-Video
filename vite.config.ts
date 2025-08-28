@@ -4,4 +4,10 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   base: "/Desmos-Video/", // GitHubリポジトリ名に合わせて変更
   plugins: [react()],
+  server: {
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+    },
+  },
 });

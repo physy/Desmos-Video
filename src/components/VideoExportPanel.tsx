@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import type { VideoExportSettings } from "../types/timeline";
+import type { Calculator } from "../types/desmos";
+import type { StateManager } from "../utils/stateManager";
+import { createFFmpeg } from "@ffmpeg/ffmpeg";
 
 export interface VideoExportPanelProps {
   videoSettings?: VideoExportSettings | null;
@@ -7,7 +10,8 @@ export interface VideoExportPanelProps {
   currentDuration: number;
   fps?: number;
   onSettingsChange?: (settings: VideoExportSettings) => void;
-  onExportStart?: (settings: VideoExportSettings) => void;
+  stateManager?: StateManager | null;
+  calculator?: Calculator | null;
 }
 
 // プリセット解像度
@@ -35,7 +39,8 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
   currentDuration,
   fps = 30,
   onSettingsChange,
-  onExportStart,
+  stateManager,
+  calculator,
 }) => {
   // frame→秒変換関数
   const frameToSeconds = (frame: number) => (fps ? frame / fps : frame / 30);
@@ -77,6 +82,19 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
 
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const ffmpegRef = useRef(createFFmpeg({ log: true }));
+  const messageRef = useRef<HTMLParagraphElement | null>(null);
+
+  const loadFFmpeg = async () => {
+    const ffmpeg = ffmpegRef.current;
+    if (!ffmpeg.isLoaded()) {
+      ffmpeg.setLogger(({ message }) => {
+        if (messageRef.current) messageRef.current.innerHTML = message;
+        console.log("FFmpeg log:", message);
+      });
+      await ffmpeg.load();
+    }
+  };
 
   // プロジェクト時間の変更を反映
   useEffect(() => {
@@ -126,22 +144,100 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
   };
 
   // エクスポート開始
-  const handleExportStart = () => {
+  const handleExportStart = async () => {
+    if (!stateManager || !calculator) {
+      alert("stateManager または calculator が未初期化です");
+      return;
+    }
     setIsExporting(true);
     setExportProgress(0);
-    onExportStart?.(settings);
 
-    // デモ用の進捗シミュレーション
-    const interval = setInterval(() => {
-      setExportProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsExporting(false);
-          return 100;
+    try {
+      await loadFFmpeg();
+      const ffmpeg = ffmpegRef.current;
+      const { durationFrames, fps, resolution, format, advanced } = settings;
+
+      // フレームを書き込み
+      for (let i = 0; i < durationFrames; i++) {
+        setExportProgress(Math.round((i / durationFrames) * 100));
+        await stateManager.applyStateAtFrame(i, calculator);
+
+        const pixelRatio = advanced?.targetPixelRatio ?? 1;
+        const width = Math.round((resolution.width ?? 1920) * pixelRatio);
+        const height = Math.round((resolution.height ?? 1080) * pixelRatio);
+
+        let imageUrl: string | null = null;
+        if (typeof calculator.asyncScreenshot === "function") {
+          imageUrl = await new Promise((resolve) =>
+            calculator.asyncScreenshot({ width, height }, (url: string) => resolve(url))
+          );
         }
-        return prev + 2;
+
+        const img = await new Promise<HTMLImageElement>((resolve) => {
+          const image = new Image();
+          image.crossOrigin = "anonymous";
+          image.onload = () => resolve(image);
+          image.src = imageUrl!;
+        });
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        const pngBlob: Blob = await new Promise((resolve) => {
+          canvas.toBlob((blob) => resolve(blob!), "image/png");
+        });
+
+        const fileName = `frame_${String(i).padStart(4, "0")}.png`;
+        ffmpeg.FS("writeFile", fileName, new Uint8Array(await pngBlob.arrayBuffer()));
+      }
+
+      setExportProgress(100);
+
+      // 動画生成
+      const outputName = `output.${format.container}`;
+      await ffmpeg.run(
+        "-framerate",
+        String(fps),
+        "-i",
+        "frame_%04d.png",
+        "-c:v",
+        format.codec === "h265"
+          ? "libx265"
+          : format.codec === "vp8"
+          ? "libvpx"
+          : format.codec === "vp9"
+          ? "libvpx-vp9"
+          : "libx264",
+        outputName
+      );
+
+      const data = ffmpeg.FS("readFile", outputName);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const blob = new Blob([data.buffer as any], {
+        type:
+          format.container === "mp4"
+            ? "video/mp4"
+            : format.container === "webm"
+            ? "video/webm"
+            : "image/gif",
       });
-    }, 100);
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = outputName;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      console.log("Video export completed");
+    } catch (err) {
+      console.error("Error occurred during video export: ", err);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   // 推定ファイルサイズ計算
@@ -524,6 +620,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
             <div className="text-xs text-center text-gray-600">
               {exportProgress.toFixed(0)}% 完了
             </div>
+            <div ref={messageRef} className="text-xs text-center text-gray-600"></div>
           </div>
         )}
       </div>
