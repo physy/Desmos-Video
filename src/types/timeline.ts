@@ -178,7 +178,6 @@ export interface AnimationEvent {
 }
 
 export interface AnimationProject {
-  initialState: DesmosState;
   timeline: TimelineEvent[];
   stateEvents: StateEvent[];
   continuousEvents: ContinuousEvent[];

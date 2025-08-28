@@ -90,13 +90,6 @@ function App() {
       className: "hover:bg-blue-50",
     },
     {
-      label: "デモイベント追加",
-      onClick: () => {
-        addDemoEvents();
-        setFileMenuOpen(false);
-      },
-    },
-    {
       label: "Stateキャプチャ",
       onClick: () => {
         handleCaptureState();
@@ -308,40 +301,7 @@ function App() {
 
   const handleCalculatorReady = useCallback((calc: Calculator) => {
     setCalculator(calc);
-
-    // デモ用の初期設定
-    calc.setExpression({
-      id: "demo1",
-      latex: "y = \\sin(x)",
-      color: "#2563eb",
-    });
-
-    calc.setExpression({
-      id: "demo2",
-      latex: "y = \\cos(x)",
-      color: "#dc2626",
-      hidden: true,
-    });
   }, []);
-
-  const addDemoEvents = useCallback(() => {
-    // デモイベントを追加
-    addEvent({
-      frame: 5,
-      action: "setMathBounds",
-      args: { left: -5, right: 5, top: 3, bottom: -3 },
-    });
-
-    addEvent({
-      frame: 7,
-      action: "setExpression",
-      args: {
-        id: "demo3",
-        latex: "y = x^2",
-        color: "#16a34a",
-      },
-    });
-  }, [addEvent]);
 
   // チェックポイントを作成（機能削除のため空実装）
   const handleCreateCheckpoint = useCallback(() => {
@@ -653,7 +613,6 @@ function App() {
                                 State Events: {project.stateEvents.length}
                               </div>
                               <div>現在フレーム: {currentFrame}</div>
-                              <div>初期式数: {project.initialState.expressions.list.length}</div>
                             </div>
                           </div>
 

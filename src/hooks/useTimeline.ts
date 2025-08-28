@@ -98,52 +98,7 @@ export const useTimeline = (calculator: Calculator | null) => {
   // isPlayingをrefでも管理
   const isPlayingRef = useRef(false);
   const [project, setProject] = useState<AnimationProject>({
-    initialState: {
-      version: 11,
-      randomSeed: "8eb0419a89e6a0b88664723b3d44dca7",
-      graph: {
-        viewport: {
-          xmin: -10,
-          ymin: -11.303462321792262,
-          xmax: 10,
-          ymax: 11.303462321792262,
-        },
-        __v12ViewportLatexStash: {
-          xmin: "-10",
-          xmax: "10",
-          ymin: "-11.303462321792262",
-          ymax: "11.303462321792262",
-        },
-      },
-      expressions: {
-        list: [
-          {
-            type: "expression",
-            id: "1",
-            color: "#c74440",
-            latex: "x^{2}",
-            frame: 0,
-          },
-          {
-            type: "expression",
-            id: "36",
-            color: "#2d70b3",
-            latex: "y=x+1",
-            frame: 0,
-          },
-        ],
-      },
-      includeFunctionParametersInRandomSeed: true,
-      doNotMigrateMovablePointStyle: true,
-    },
-    timeline: [
-      {
-        id: "3",
-        frame: 150,
-        action: "setMathBounds",
-        args: { left: -5, right: 5, top: 5, bottom: -5 },
-      },
-    ],
+    timeline: [],
     stateEvents: [],
     continuousEvents: [],
     durationFrames: 300,

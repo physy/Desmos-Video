@@ -8,7 +8,6 @@ export interface StateEventEditPanelProps {
   onStateDelete?: () => void;
   onDeselect?: () => void;
   calculator?: Calculator | null;
-  // isInitialState削除
 }
 
 export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentTime?: number }> = ({
@@ -18,17 +17,9 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
   onDeselect,
   calculator,
   currentTime,
-  // isInitialState削除
 }) => {
-  // 選択中state or calculatorの現在state
-  const initialStateJson = selectedState
-    ? JSON.stringify(selectedState.state, null, 2)
-    : calculator
-    ? JSON.stringify(calculator.getState(), null, 2)
-    : "{}";
-
   const [editingState, setEditingState] = useState<StateEvent | null>(selectedState);
-  const [editingStateJson, setEditingStateJson] = useState<string>(initialStateJson);
+  const [editingStateJson, setEditingStateJson] = useState<string>("");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isJsonValid, setIsJsonValid] = useState(true);
   // 新規State挿入用（editingStateがnullの場合も）

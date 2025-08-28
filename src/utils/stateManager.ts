@@ -77,7 +77,6 @@ export class StateManager {
     }
     return null;
   }
-  // initialState削除
   private timeline: UnifiedEvent[];
   private stateEvents: StateEvent[];
   private continuousEvents: ContinuousEvent[];
