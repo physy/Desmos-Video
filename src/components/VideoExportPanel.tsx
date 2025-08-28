@@ -46,38 +46,61 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
   const frameToSeconds = (frame: number) => (fps ? frame / fps : frame / 30);
   const [settings, setSettings] = useState<VideoExportSettings>(() => {
     // 外部から渡された設定があればそれを使用、なければフルHD(1080p)で初期化
-    return (
-      videoSettings || {
-        durationFrames: currentDuration * fps,
-        fps,
-        resolution: {
-          width: 1920,
-          height: 1080,
-          preset: "1080p",
-        },
-        quality: {
-          bitrate: 5000,
-          preset: "standard",
-        },
-        format: {
-          container: "mp4",
-          codec: "h264",
-        },
-        advanced: {
-          targetPixelRatio: 0.5,
-          backgroundColor: "#ffffff",
-          antialias: true,
-          motionBlur: false,
-          frameInterpolation: false,
-        },
-        metadata: {
-          title: "Desmos Animation",
-          description: "",
-          author: "",
-          tags: [],
-        },
-      }
-    );
+    const defaultSettings: VideoExportSettings = {
+      durationFrames: Math.round(currentDuration * (fps || 30)),
+      fps: fps || 30,
+      resolution: {
+        width: 1920,
+        height: 1080,
+        preset: "1080p",
+      },
+      quality: {
+        bitrate: 5000,
+        preset: "standard",
+      },
+      format: {
+        container: "mp4",
+        codec: "h264",
+      },
+      advanced: {
+        targetPixelRatio: 0.5,
+        backgroundColor: "#ffffff",
+        antialias: true,
+        motionBlur: false,
+        frameInterpolation: false,
+      },
+      metadata: {
+        title: "Desmos Animation",
+        description: "",
+        author: "",
+        tags: [],
+      },
+    };
+    // videoSettingsがあればマージ（不足項目はデフォルトで補完）
+    return {
+      ...defaultSettings,
+      ...videoSettings,
+      resolution: {
+        ...defaultSettings.resolution,
+        ...(videoSettings?.resolution || {}),
+      },
+      quality: {
+        ...defaultSettings.quality,
+        ...(videoSettings?.quality || {}),
+      },
+      format: {
+        ...defaultSettings.format,
+        ...(videoSettings?.format || {}),
+      },
+      advanced: {
+        ...defaultSettings.advanced,
+        ...(videoSettings?.advanced || {}),
+      },
+      metadata: {
+        ...defaultSettings.metadata,
+        ...(videoSettings?.metadata || {}),
+      },
+    };
   });
 
   const [isExporting, setIsExporting] = useState(false);
@@ -98,20 +121,97 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
 
   // プロジェクト時間の変更を反映
   useEffect(() => {
-    setSettings((prev) => ({ ...prev, durationFrames: currentDuration * (fps || 30), fps }));
+    setSettings((prev) => ({
+      ...prev,
+      durationFrames: Math.round(currentDuration * (fps || 30)),
+      fps: fps || 30,
+    }));
   }, [currentDuration, fps]);
 
   // 外部からの設定変更を反映
   useEffect(() => {
     if (videoSettings) {
-      setSettings(videoSettings);
+      setSettings((prev) => ({
+        ...prev,
+        ...videoSettings,
+        resolution: {
+          ...prev.resolution,
+          ...(videoSettings.resolution || {}),
+        },
+        quality: {
+          ...prev.quality,
+          ...(videoSettings.quality || {}),
+        },
+        format: {
+          ...prev.format,
+          ...(videoSettings.format || {}),
+        },
+        advanced: {
+          ...prev.advanced,
+          ...(videoSettings.advanced || {}),
+        },
+        metadata: {
+          ...prev.metadata,
+          ...(videoSettings.metadata || {}),
+        },
+      }));
     }
   }, [videoSettings]);
 
   // 設定変更ハンドラー
   const handleSettingsChange = (updates: Partial<VideoExportSettings>) => {
-    const newSettings = { ...settings, ...updates };
-    console.log("VideoExportPanel: Settings changed", { updates, newSettings });
+    // fpsやdurationFramesの依存関係を考慮
+    const defaultAdvanced = {
+      targetPixelRatio: 0.5,
+      backgroundColor: "#ffffff",
+      antialias: true,
+      motionBlur: false,
+      frameInterpolation: false,
+    };
+    const defaultResolution = {
+      width: 1920,
+      height: 1080,
+      preset: "1080p",
+    };
+    const defaultQuality = {
+      bitrate: 5000,
+      preset: "standard",
+    };
+    const defaultFormat = {
+      container: "mp4",
+      codec: "h264",
+    };
+    const defaultMetadata = {
+      title: "Desmos Animation",
+      description: "",
+      author: "",
+      tags: [],
+    };
+
+    const newSettings = {
+      ...settings,
+      ...updates,
+      advanced: Object.assign({}, defaultAdvanced, settings.advanced, updates.advanced || {}),
+      resolution: Object.assign(
+        {},
+        defaultResolution,
+        settings.resolution,
+        updates.resolution || {}
+      ),
+      quality: Object.assign({}, defaultQuality, settings.quality, updates.quality || {}),
+      format: Object.assign({}, defaultFormat, settings.format, updates.format || {}),
+      metadata: Object.assign({}, defaultMetadata, settings.metadata, updates.metadata || {}),
+    };
+    if (updates.fps !== undefined && updates.durationFrames === undefined) {
+      newSettings.durationFrames = Math.round(currentDuration * updates.fps);
+    }
+    if (updates.durationFrames !== undefined && updates.fps === undefined) {
+      newSettings.fps = settings.fps;
+    }
+    // codec/containerの組み合わせが不正な場合は自動修正
+    if (newSettings.format.container === "gif" && newSettings.format.codec !== "h264") {
+      newSettings.format.codec = "h264";
+    }
     setSettings(newSettings);
     onSettingsChange?.(newSettings);
     onVideoSettingsChange?.(newSettings); // 親コンポーネントに通知
@@ -120,7 +220,6 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
   // 解像度プリセット変更
   const handleResolutionPresetChange = (preset: keyof typeof RESOLUTION_PRESETS) => {
     const resolution = RESOLUTION_PRESETS[preset];
-    console.log("VideoExportPanel: Resolution preset changed", { preset, resolution });
     handleSettingsChange({
       resolution: {
         ...settings.resolution,
@@ -198,21 +297,29 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
 
       // 動画生成
       const outputName = `output.${format.container}`;
-      await ffmpeg.run(
-        "-framerate",
-        String(fps),
-        "-i",
-        "frame_%04d.png",
-        "-c:v",
-        format.codec === "h265"
-          ? "libx265"
-          : format.codec === "vp8"
-          ? "libvpx"
-          : format.codec === "vp9"
-          ? "libvpx-vp9"
-          : "libx264",
-        outputName
-      );
+      if (format.container === "gif") {
+        // GIFはコーデック指定せず、-f gifを追加
+        await ffmpeg.run(
+          "-framerate",
+          String(fps),
+          "-i",
+          "frame_%04d.png",
+          "-f",
+          "gif",
+          outputName
+        );
+        // ...existing code...
+      } else {
+        await ffmpeg.run(
+          "-framerate",
+          String(fps),
+          "-i",
+          "frame_%04d.png",
+          "-c:v",
+          format.codec === "h265" ? "libx265" : "libx264",
+          outputName
+        );
+      }
 
       const data = ffmpeg.FS("readFile", outputName);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -269,13 +376,15 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">動画の長さ (秒)</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              動画の長さ (フレーム)
+            </label>
             <input
               type="number"
               value={settings.durationFrames}
-              onChange={(e) => handleSettingsChange({ durationFrames: parseFloat(e.target.value) })}
-              min="0.1"
-              step="0.1"
+              onChange={(e) => handleSettingsChange({ durationFrames: parseInt(e.target.value) })}
+              min="1"
+              step="1"
               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -289,10 +398,10 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
               onChange={(e) => handleSettingsChange({ fps: parseInt(e.target.value) })}
               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              <option value={24}>24 fps (映画)</option>
-              <option value={30}>30 fps (標準)</option>
-              <option value={60}>60 fps (滑らか)</option>
-              <option value={120}>120 fps (超滑らか)</option>
+              <option value={24}>24 fps</option>
+              <option value={30}>30 fps</option>
+              <option value={60}>60 fps</option>
+              <option value={120}>120 fps</option>
             </select>
           </div>
         </div>
@@ -423,14 +532,13 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
                 handleSettingsChange({
                   format: {
                     ...settings.format,
-                    container: e.target.value as "mp4" | "webm" | "gif",
+                    container: e.target.value as "mp4" | "gif",
                   },
                 })
               }
               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               <option value="mp4">MP4 (推奨)</option>
-              <option value="webm">WebM</option>
               <option value="gif">GIF</option>
             </select>
           </div>
@@ -465,7 +573,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
         <div className="space-y-2">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
-              ピクセル比: {settings.advanced.targetPixelRatio}x
+              グラフのピクセル比: {settings.advanced.targetPixelRatio}x
             </label>
             <input
               type="range"
