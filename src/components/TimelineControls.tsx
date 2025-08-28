@@ -104,8 +104,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   const handleSelectMouseUp = (e?: React.MouseEvent<HTMLDivElement>) => {
     if (!isSelecting || !selectionRect) return;
     const selected: string[] = [];
-    // TimelineItemベースで選択判定
-    allMarkers.forEach((item) => {
+    // TimelineItemベースで選択判定（track割り当て済みリストを使用）
+    allMarkersWithTrack.markers.forEach((item: TimelineItem & { track: number }) => {
       const el = document.querySelector(`[data-id='${item.id}']`);
       if (!el) return;
       const rect = el.getBoundingClientRect();
@@ -386,7 +386,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
       const eventWithTrack: EventWithTrack = {
         ...event,
         track: trackIndex,
-        width: (eventDuration / duration) * 100 * zoom,
+        width: (eventDuration / duration) * 100,
         left: (event.frame / duration) * 100,
       };
 
@@ -502,11 +502,58 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     return "right-0";
   };
 
-  // TimelineItem型で全マーカーを一元管理
-  const allMarkers: TimelineItem[] = useMemo(() => {
-    // ExpressionEventなど今後追加時はここで拡張
-    return [...timeline, ...stateEvents];
-  }, [timeline, stateEvents]);
+  // 全種類のマーカーをtrack（レーン）で重ならないように配置
+  const allMarkersWithTrack = useMemo(() => {
+    // 1. 全種類まとめてフレーム順で並べる
+    const all: TimelineItem[] = [...timeline, ...stateEvents];
+    // 2. track割り当て（durationと最低表示幅1%を加味）
+    const tracks: TimelineItem[][] = [];
+    const result: Array<TimelineItem & { track: number }> = all
+      .sort((a, b) => {
+        const af = "frame" in a ? a.frame : 0;
+        const bf = "frame" in b ? b.frame : 0;
+        return af - bf;
+      })
+      .map((item) => {
+        // duration（横幅）
+        let itemDuration = 0;
+        if ("action" in item && item.action === "startAnimation") {
+          itemDuration = (item.args.durationFrames as number) || 1;
+        } else {
+          itemDuration = 0.1;
+        }
+        // 見た目の最低幅（%）
+        const minWidthPercent = 1;
+        const itemStartPercent = (("frame" in item ? item.frame : 0) / duration) * 100;
+        const itemEndPercent =
+          itemStartPercent + Math.max((itemDuration / duration) * 100, minWidthPercent);
+        // trackを探す
+        let trackIndex = 0;
+        while (trackIndex < tracks.length) {
+          const track = tracks[trackIndex];
+          const canFit = track.every((existing) => {
+            const existingFrame = "frame" in existing ? existing.frame : 0;
+            let existingDuration = 0;
+            if ("action" in existing && existing.action === "startAnimation") {
+              existingDuration = (existing.args.durationFrames as number) || 1;
+            } else {
+              existingDuration = 0.1;
+            }
+            const existingStartPercent = (existingFrame / duration) * 100;
+            const existingEndPercent =
+              existingStartPercent + Math.max((existingDuration / duration) * 100, minWidthPercent);
+            // 見た目上重ならないか判定
+            return itemStartPercent >= existingEndPercent || itemEndPercent <= existingStartPercent;
+          });
+          if (canFit) break;
+          trackIndex++;
+        }
+        if (trackIndex >= tracks.length) tracks.push([]);
+        tracks[trackIndex].push(item);
+        return { ...item, track: trackIndex };
+      });
+    return { markers: result, trackCount: tracks.length };
+  }, [timeline, stateEvents, duration]);
 
   return (
     <div className="h-full flex flex-col bg-gray-800 text-white border-t border-gray-700">
@@ -669,216 +716,103 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   ></div>
                 );
               })}
-              {/* マーカー描画（イベント・StateEvent・今後の新種も対応） */}
-              {allMarkers.map((item, index) => {
-                // type判定で描画分岐（今後新種追加時もここで分岐）
+              {/* 全種類のマーカーをtrackで重ならないように描画 */}
+              {allMarkersWithTrack.markers.map((item, index) => {
+                const isSelected = item.id ? selectedIds.includes(item.id) : false;
+                const dragEvent =
+                  dragState && dragState.eventId === item.id && dragState.isDragging;
+                // left/width計算
+                let left = 0;
+                let width = 1;
+                let color = "#6b7280";
+                let border = isSelected ? "2px solid #3b82f6" : "2px solid rgba(255,255,255,0.3)";
+                let height = "24px";
+                let top = 3;
                 if ("action" in item) {
-                  // TimelineEvent（イベントマーカー）
-                  const event = item as TimelineEvent;
-                  const isSelected = event.id ? selectedIds.includes(event.id) : false;
-                  const dragEvent =
-                    dragState && dragState.eventId === event.id && dragState.isDragging;
-                  // left/width/track計算はeventsWithTracks.eventsから取得
-                  const eventWithTrack = eventsWithTracks.events.find((ev) => ev.id === event.id);
-                  if (!eventWithTrack) return null;
-                  return (
-                    <div
-                      key={event.id || index}
-                      data-id={event.id || index}
-                      className={`absolute rounded-md cursor-pointer hover:scale-105 transition-transform z-20 group select-none ${
-                        isSelected ? "ring-2 ring-blue-400 ring-opacity-80" : ""
-                      } ${dragEvent ? "cursor-move opacity-80" : ""}`}
-                      style={{
-                        left: `${eventWithTrack.left}%`,
-                        width: `${Math.max(eventWithTrack.width, 1)}%`,
-                        top: `${eventWithTrack.track * 35 + 10}px`,
-                        height: "30px",
-                        backgroundColor: getEventColor(event.action),
-                        border: isSelected
-                          ? "2px solid #3b82f6"
-                          : "2px solid rgba(255,255,255,0.3)",
-                      }}
-                      onMouseDown={(e) => handleItemMouseDown(item, e)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (dragState && dragState.isDragging) return;
-                        if (e.shiftKey && event.id) {
-                          setSelectedIds((prev) => {
-                            if (!event.id || prev.includes(event.id)) return prev;
-                            return [...prev, event.id].filter((id): id is string => !!id);
-                          });
-                        } else if (event.id) {
-                          setSelectedIds([event.id]);
-                        }
-                        if (onEventSelect) {
-                          onEventSelect(event);
-                        } else {
-                          onSeek(event.frame);
-                        }
-                        // イベントマーカー選択時は必ずEventタブに切り替え
+                  left = (item.frame / duration) * 100;
+                  width =
+                    (("action" in item && item.action === "startAnimation"
+                      ? (item.args.durationFrames as number) || 1
+                      : 0.1) /
+                      duration) *
+                    100;
+                  color = getEventColor(item.action);
+                } else if ("state" in item) {
+                  left = (item.frame / duration) * 100;
+                  color = "#22c55e";
+                  border = isSelected ? "2px solid #3b82f6" : "2px solid #22c55e";
+                  height = "30px";
+                  top = 0;
+                } else if ("properties" in item && "type" in item && item.type === "expression") {
+                  left = (item.frame / duration) * 100;
+                  color = "#facc15";
+                  border = isSelected ? "2px solid #3b82f6" : "2px solid #facc15";
+                }
+                return (
+                  <div
+                    key={item.id || index}
+                    data-id={item.id || index}
+                    className={`absolute rounded-md cursor-pointer z-20 group select-none ${
+                      isSelected ? "ring-2 ring-blue-400 ring-opacity-80" : ""
+                    } ${dragEvent ? "cursor-move opacity-80" : ""}`}
+                    style={{
+                      left: `${left}%`,
+                      width: `${Math.max(width, 1)}%`,
+                      top: `${item.track * 35 + top}px`,
+                      height,
+                      backgroundColor: color,
+                      border,
+                    }}
+                    onMouseDown={(e) => handleItemMouseDown(item, e)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (dragState && dragState.isDragging) return;
+                      if (e.shiftKey && item.id) {
+                        setSelectedIds((prev) => {
+                          if (!item.id || prev.includes(item.id)) return prev;
+                          return [...prev, item.id].filter((id): id is string => !!id);
+                        });
+                      } else if (item.id) {
+                        setSelectedIds([item.id]);
+                      }
+                      if ("action" in item && onEventSelect) {
+                        onEventSelect(item);
+                      } else if ("state" in item && onStateSelect) {
+                        onStateSelect(item);
+                      } else if ("frame" in item) {
+                        onSeek(item.frame);
+                      }
+                      // タブ切り替え
+                      if ("state" in item) {
+                        setActiveTab("state");
+                      } else {
                         setActiveTab("events");
-                      }}
-                      onDoubleClick={() => event.id && setSelectedIds([event.id])}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
+                      }
+                    }}
+                    onDoubleClick={() => item.id && setSelectedIds([item.id])}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      if ("action" in item) {
                         setContextMenu({
                           x: e.clientX,
                           y: e.clientY,
-                          event,
+                          event: item,
                         });
-                      }}
-                      title={`${event.action} at frame ${event.frame} (ドラッグで移動可能)`}
-                    >
-                      {/* イベント内容 */}
-                      <div className="px-2 py-1 text-xs text-white font-medium truncate select-none">
-                        {event.action}
-                      </div>
-                      {/* ホバー時の詳細情報 */}
-                      <div
-                        className={`absolute bottom-full mb-2 ${getTooltipPosition(
-                          eventWithTrack.left
-                        )} bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none max-w-xs`}
-                        style={{ zIndex: 10000 }}
-                      >
-                        <div className="font-medium">{event.action}</div>
-                        <div className="text-gray-300">フレーム: {event.frame}</div>
-                        <div className="text-gray-400 break-words">
-                          {JSON.stringify(event.args, null, 1)}
-                        </div>
-                        {/* ツールチップの矢印 */}
-                        <div
-                          className={`absolute top-full ${
-                            eventWithTrack.left >= 20 && eventWithTrack.left <= 80
-                              ? "left-1/2 transform -translate-x-1/2"
-                              : eventWithTrack.left < 20
-                              ? "left-4"
-                              : "right-4"
-                          }`}
-                        >
-                          <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                } else if ("state" in item) {
-                  // StateEvent（状態マーカー）
-                  const stateEvent = item as StateEvent;
-                  const position = (stateEvent.frame / duration) * 100;
-                  const isDragging =
-                    dragState &&
-                    dragState.type === "state" &&
-                    dragState.stateId === stateEvent.id &&
-                    dragState.isDragging;
-                  const isSelected = stateEvent.id ? selectedIds.includes(stateEvent.id) : false;
-                  return (
-                    <div
-                      key={stateEvent.id || `state-${index}`}
-                      data-id={stateEvent.id || `state-${index}`}
-                      className="absolute z-30"
-                      style={{ left: `${position}%`, top: "0px" }}
-                    >
-                      <div
-                        className={`w-4 h-8 bg-green-500 rounded-sm transform -translate-x-1/2 relative border border-green-400 shadow-sm cursor-pointer hover:bg-green-400 transition-colors group ${
-                          isDragging ? "cursor-move opacity-80" : ""
-                        } ${isSelected ? "ring-4 ring-blue-400 border-2 border-blue-500" : ""}`}
-                        onMouseDown={(e) => {
-                          if (e.button === 0) {
-                            handleItemMouseDown(item, e);
-                          }
-                        }}
-                        onClick={(e) => {
-                          // ドラッグ中は選択処理をスキップ
-                          if (dragState && dragState.type === "state" && dragState.isDragging)
-                            return;
-                          e.stopPropagation();
-                          if (e.shiftKey && item.id) {
-                            setSelectedIds((prev) => {
-                              if (!item.id || prev.includes(item.id)) return prev;
-                              return [...prev, item.id].filter((id): id is string => !!id);
-                            });
-                          } else if (item.id) {
-                            setSelectedIds([item.id]);
-                          }
-                          onSeek(item.frame);
-                          if (onStateSelect && "state" in item) onStateSelect(item);
-                          // 種類に応じてタブ切り替え
-                          if ("state" in item) {
-                            setActiveTab("state");
-                          } else {
-                            setActiveTab("events");
-                          }
-                        }}
-                        title={`State Event at frame ${stateEvent.frame}`}
-                      >
-                        {/* StateEventのツールチップ */}
-                        <div
-                          className={`absolute bottom-full mb-2 ${getTooltipPosition(
-                            position
-                          )} bg-gray-900 text-white text-xs rounded-md py-2 px-3 whitespace-nowrap shadow-lg border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none max-w-xs`}
-                          style={{ zIndex: 10000 }}
-                        >
-                          <div className="font-medium text-green-300">State Event</div>
-                          <div className="text-gray-300">フレーム: {stateEvent.frame}</div>
-                          <div className="text-gray-400 break-words">
-                            {stateEvent.description || "Captured state"}
-                          </div>
-                          <div className="text-xs text-blue-300 mt-1 font-medium">
-                            クリックでシーク
-                          </div>
-                          {/* ツールチップの矢印 */}
-                          <div
-                            className={`absolute top-full ${
-                              position >= 20 && position <= 80
-                                ? "left-1/2 transform -translate-x-1/2"
-                                : position < 20
-                                ? "left-4"
-                                : "right-4"
-                            }`}
-                          >
-                            <div className="border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                } else if ("properties" in item && "type" in item && item.type === "expression") {
-                  // ExpressionEvent（仮実装例）
-                  const exprEvent = item as ExpressionEvent;
-                  const position = (exprEvent.frame / duration) * 100;
-                  const isSelected = exprEvent.id ? selectedIds.includes(exprEvent.id) : false;
-                  return (
-                    <div
-                      key={exprEvent.id || `expr-${index}`}
-                      data-id={exprEvent.id || `expr-${index}`}
-                      className="absolute z-40"
-                      style={{ left: `${position}%`, top: "40px" }}
-                    >
-                      <div
-                        className={`w-4 h-8 bg-yellow-400 rounded-sm transform -translate-x-1/2 relative border border-yellow-300 shadow-sm cursor-pointer hover:bg-yellow-300 transition-colors group ${
-                          isSelected ? "ring-4 ring-blue-400 border-2 border-blue-500" : ""
-                        }`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (e.shiftKey && exprEvent.id) {
-                            setSelectedIds((prev) => {
-                              if (!exprEvent.id || prev.includes(exprEvent.id)) return prev;
-                              return [...prev, exprEvent.id].filter((id): id is string => !!id);
-                            });
-                          } else if (exprEvent.id) {
-                            setSelectedIds([exprEvent.id]);
-                          }
-                          onSeek(exprEvent.frame);
-                          setActiveTab("events");
-                        }}
-                        title={`Expression Event at frame ${exprEvent.frame}`}
-                      >
-                        {/* ...ツールチップ等は既存流用... */}
-                      </div>
-                    </div>
-                  );
-                }
-                // 今後ExpressionEvent等追加時はここで分岐
-                return null;
+                      }
+                    }}
+                    title={
+                      "action" in item
+                        ? `${item.action} at frame ${item.frame} (ドラッグで移動可能)`
+                        : "state" in item
+                        ? `State Event at frame ${item.frame}`
+                        : "properties" in item && "type" in item && item.type === "expression"
+                        ? `Expression Event at frame ${item.frame}`
+                        : ""
+                    }
+                  >
+                    {/* ...ツールチップ等は既存流用... */}
+                  </div>
+                );
               })}
               {/* 右クリックメニュー: オーバーレイでラップし、メニュー以外クリックで閉じる */}
               {contextMenu && contextMenu.event && (
