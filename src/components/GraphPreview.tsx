@@ -106,7 +106,16 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
       {!imageUrl ? (
         <span>プレビューを生成中...</span>
       ) : (
-        <img src={imageUrl} alt="Graph Preview" style={{ maxWidth: "100%", maxHeight: "100%" }} />
+        <img
+          src={imageUrl}
+          alt="Graph Preview"
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            background: "#fff",
+          }}
+        />
       )}
     </div>
   );

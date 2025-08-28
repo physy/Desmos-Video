@@ -7,6 +7,7 @@ interface ResizablePanelProps {
   minSizes?: number[];
   maxSizes?: number[];
   className?: string;
+  onResize?: () => void; // パネルサイズ変更時に呼ばれるコールバック
 }
 
 export const ResizablePanel: React.FC<ResizablePanelProps> = ({
@@ -16,6 +17,7 @@ export const ResizablePanel: React.FC<ResizablePanelProps> = ({
   minSizes = [20, 20],
   maxSizes = [80, 80],
   className = "",
+  onResize,
 }) => {
   const [sizes, setSizes] = useState(initialSizes);
   const [isDragging, setIsDragging] = useState(false);
@@ -51,8 +53,11 @@ export const ResizablePanel: React.FC<ResizablePanelProps> = ({
       newSizes[1] = Math.max(minSizes[1], Math.min(maxSizes[1], 100 - newSizes[0]));
 
       setSizes(newSizes);
+      if (typeof onResize === "function") {
+        onResize();
+      }
     },
-    [isDragging, isHorizontal, minSizes, maxSizes]
+    [isDragging, isHorizontal, minSizes, maxSizes, onResize]
   );
 
   const handleMouseUp = useCallback(() => {

@@ -404,6 +404,21 @@ function App() {
               minSizes={[50, 25]}
               maxSizes={[80, 50]}
               className="h-full"
+              onResize={() => {
+                // DesmosGraphのresizeを呼ぶ
+                if (
+                  graphViewTab === "graph" &&
+                  typeof window !== "undefined" &&
+                  window.Desmos &&
+                  calculator
+                ) {
+                  try {
+                    calculator.resize();
+                  } catch (e) {
+                    console.warn("Failed to resize calculator", e);
+                  }
+                }
+              }}
             >
               {/* グラフ/プレビュー切り替えタブ */}
               <div className="h-full flex flex-col">

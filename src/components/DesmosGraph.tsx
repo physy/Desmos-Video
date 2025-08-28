@@ -47,6 +47,8 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
   const [isLoaded, setIsLoaded] = useState(false);
   const calculatorRef = useRef<Calculator | null>(null);
   const isInitializedRef = useRef(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [containerStyle, setContainerStyle] = useState<React.CSSProperties>({});
 
   // onCalculatorReadyの参照を安定化
   const onCalculatorReadyRef = useRef(onCalculatorReady);
@@ -135,37 +137,78 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
     };
   }, []); // 依存関係を空の配列にして一度だけ実行
 
-  // アスペクト比が変更されたときにリサイズ
+  // ResizeObserverで親DOMサイズ変化を監視し、グラフ領域サイズを再計算
   useEffect(() => {
-    console.log("DesmosGraph: aspectRatio changed to", aspectRatio);
-    if (calculatorRef.current) {
-      setTimeout(() => {
-        try {
-          calculatorRef.current?.resize();
-          console.log("DesmosGraph: Calculator resized for aspect ratio", aspectRatio);
-        } catch (error) {
-          console.error("Error resizing calculator:", error);
-        }
-      }, 100);
+    function updateContainerStyle() {
+      if (!wrapperRef.current) return;
+      const parent = wrapperRef.current;
+      const parentWidth = parent.offsetWidth;
+      const parentHeight = parent.offsetHeight;
+      if (!parentWidth || !parentHeight) return;
+      const parentAspect = parentWidth / parentHeight;
+      let width = parentWidth;
+      let height = parentHeight;
+      if (parentAspect > aspectRatio) {
+        // 親が横長→高さ基準
+        height = parentHeight;
+        width = height * aspectRatio;
+      } else {
+        // 親が縦長→幅基準
+        width = parentWidth;
+        height = width / aspectRatio;
+      }
+      setContainerStyle({
+        width: `${width}px`,
+        height: `${height}px`,
+        maxWidth: "100%",
+        maxHeight: "100%",
+        minHeight: "200px",
+        minWidth: "200px",
+        background: "#fff",
+        margin: "auto",
+        overflow: "hidden",
+      });
+      // Desmosのresize
+      if (calculatorRef.current) {
+        setTimeout(() => {
+          try {
+            calculatorRef.current?.resize();
+          } catch (error) {
+            console.error("Error resizing calculator:", error);
+          }
+        }, 100);
+      }
     }
+    updateContainerStyle();
+    // ResizeObserverで親DOMサイズ変化を監視
+    let observer: ResizeObserver | null = null;
+    const observedElem = wrapperRef.current;
+    if (observedElem && typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => {
+        updateContainerStyle();
+      });
+      observer.observe(observedElem);
+    }
+    // windowリサイズにも対応
+    window.addEventListener("resize", updateContainerStyle);
+    return () => {
+      window.removeEventListener("resize", updateContainerStyle);
+      if (observer && observedElem) {
+        observer.unobserve(observedElem);
+        observer.disconnect();
+      }
+    };
   }, [aspectRatio]);
 
   return (
-    <div className={`${className} relative flex items-center justify-center overflow-hidden`}>
-      {/* 常にアスペクト比を適用：object-fit:containのような挙動 */}
+    <div
+      ref={wrapperRef}
+      className={`${className} relative flex items-center justify-center overflow-hidden`}
+      style={{ width: "100%", height: "100%" }}
+    >
+      {/* アスペクト比を維持し中央配置 */}
       <div className="flex items-center justify-center w-full h-full bg-gray-100">
-        <div
-          ref={containerRef}
-          style={{
-            aspectRatio: aspectRatio.toString(),
-            width: aspectRatio > 1 ? "100%" : "auto", // 横長なら幅100%
-            height: aspectRatio <= 1 ? "100%" : "auto", // 縦長なら高さ100%
-            maxWidth: "100%",
-            maxHeight: "100%",
-            minHeight: "200px",
-            minWidth: "200px",
-          }}
-        />
+        <div ref={containerRef} style={containerStyle} />
       </div>
       {!isLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
