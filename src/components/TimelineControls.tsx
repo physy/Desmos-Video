@@ -472,9 +472,13 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   // 秒単位の目盛り生成（fpsでframe→秒変換）
   const generateTimeMarks = () => {
     const marks = [];
-    // 目盛り間隔（秒）
     const totalSeconds = frameToSeconds(duration);
-    const interval = totalSeconds <= 10 ? 1 : totalSeconds <= 30 ? 5 : 10;
+    const widthSeconds = totalSeconds / zoom;
+    console.log("widthSeconds:", widthSeconds);
+    // ズーム倍率に応じて目盛り間隔を細かく（約10等分）
+    const interval =
+      [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500].filter((i) => widthSeconds / 10 < i)[0] ||
+      1000;
     for (let sec = 0; sec <= totalSeconds; sec += interval) {
       const frame = Math.round(sec * fps);
       const position = (frame / duration) * 100;
@@ -584,41 +588,44 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
             <SkipForward size={16} />
           </button>
         </div>
-
-        {/* 現在時刻表示 */}
-        <div className="flex items-center space-x-4 text-sm">
-          <span className="font-mono text-blue-400">{formatTime(currentFrame)}</span>
-          <span className="text-gray-500">/</span>
-          <span className="font-mono text-gray-400">{formatTime(duration)}</span>
+        <div className="flex flex-row items-center space-x-4">
+          {/* ズームコントロール（背景のみ強化） */}
+          <div className="relative flex items-center " style={{ height: 32 }}>
+            <span className="text-xs text-gray-400 relative z-10 ml-2">ズーム</span>
+            <div className="relative mx-2" style={{ width: 128 }}>
+              {/* 背景軸と両端ラベル（スライダー幅に合わせる） */}
+              <div
+                className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-2 pointer-events-none"
+                style={{ width: "100%" }}
+              >
+                <div className="w-full h-1 bg-gray-700 rounded-full" />
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={5}
+                step={0.1}
+                value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+                className="w-full bg-transparent appearance-none cursor-pointer relative z-10"
+                style={{ accentColor: "#6366f1" }}
+              />
+            </div>
+            <span className="text-xs text-gray-300 relative z-10 w-12">
+              {(zoom * 100).toFixed(0)}%
+            </span>
+          </div>
+          {/* 現在時刻表示 */}
+          <div className="flex items-center space-x-4 text-sm">
+            <span className="font-mono text-blue-400">{formatTime(currentFrame)}</span>
+            <span className="text-gray-500">/</span>
+            <span className="font-mono text-gray-400">{formatTime(duration)}</span>
+          </div>
         </div>
       </div>
 
       {/* メインタイムライン */}
       <div className="flex flex-col flex-1 min-h-0 px-4 py-2">
-        {/* ズームコントロール（背景のみ強化） */}
-        <div className="relative flex items-center mb-2" style={{ height: 32 }}>
-          <span className="text-xs text-gray-400 relative z-10 ml-2">ズーム</span>
-          <div className="relative mx-2" style={{ width: 128 }}>
-            {/* 背景軸と両端ラベル（スライダー幅に合わせる） */}
-            <div
-              className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-2 pointer-events-none"
-              style={{ width: "100%" }}
-            >
-              <div className="w-full h-1 bg-gray-700 rounded-full" />
-            </div>
-            <input
-              type="range"
-              min={1}
-              max={5}
-              step={0.1}
-              value={zoom}
-              onChange={(e) => setZoom(Number(e.target.value))}
-              className="w-full bg-transparent appearance-none cursor-pointer relative z-10"
-              style={{ accentColor: "#6366f1" }}
-            />
-          </div>
-          <span className="text-xs text-gray-300 relative z-10">{(zoom * 100).toFixed(0)}%</span>
-        </div>
         {/* タイムラインと時間軸を一体化したスクロールコンテナ */}
         <div className="flex-1 relative bg-gray-900 rounded-lg px-4 py-2 flex flex-col">
           <div
@@ -881,7 +888,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
           </div>
 
           {/* インタラクティブスライダー（UI改善） */}
-          <div className="relative flex-shrink-0 mt-4 mb-2">
+          <div className="relative flex-shrink-0 mt-1 mb-2">
             {/* 軸と目盛り */}
             <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-2 pointer-events-none">
               <div className="w-full h-1 bg-gray-700 rounded-full" />
@@ -914,6 +921,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
         {/* 詳細な時間情報と凡例 */}
         <div className="flex justify-between items-center text-xs text-gray-500 mt-3">
           <div className="flex space-x-4">
+            <span>現在のフレーム: {currentFrame}</span>
+            <span>現在時刻: {formatTime(currentFrame)}</span>
             <span>進行率: {((currentFrame / duration) * 100).toFixed(1)}%</span>
             <span>残り時間: {formatTime(duration - currentFrame)}</span>
           </div>

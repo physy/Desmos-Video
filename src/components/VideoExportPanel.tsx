@@ -7,7 +7,7 @@ import { createFFmpeg } from "@ffmpeg/ffmpeg";
 export interface VideoExportPanelProps {
   videoSettings?: VideoExportSettings | null;
   onVideoSettingsChange?: (settings: VideoExportSettings) => void;
-  currentDuration: number;
+  durationFrames: number;
   fps?: number;
   onSettingsChange?: (settings: VideoExportSettings) => void;
   stateManager?: StateManager | null;
@@ -36,7 +36,7 @@ const QUALITY_PRESETS = {
 export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
   videoSettings,
   onVideoSettingsChange,
-  currentDuration,
+  durationFrames,
   fps = 30,
   onSettingsChange,
   stateManager,
@@ -47,7 +47,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
   const [settings, setSettings] = useState<VideoExportSettings>(() => {
     // 外部から渡された設定があればそれを使用、なければフルHD(1080p)で初期化
     const defaultSettings: VideoExportSettings = {
-      durationFrames: Math.round(currentDuration * (fps || 30)),
+      durationFrames: durationFrames,
       fps: fps || 30,
       resolution: {
         width: 1920,
@@ -119,15 +119,6 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
       await ffmpeg.load();
     }
   };
-
-  // プロジェクト時間の変更を反映
-  useEffect(() => {
-    setSettings((prev) => ({
-      ...prev,
-      durationFrames: Math.round(currentDuration * (fps || 30)),
-      fps: fps || 30,
-    }));
-  }, [currentDuration, fps]);
 
   // 外部からの設定変更を反映
   useEffect(() => {
@@ -203,9 +194,6 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
       format: Object.assign({}, defaultFormat, settings.format, updates.format || {}),
       metadata: Object.assign({}, defaultMetadata, settings.metadata, updates.metadata || {}),
     };
-    if (updates.fps !== undefined && updates.durationFrames === undefined) {
-      newSettings.durationFrames = Math.round(currentDuration * updates.fps);
-    }
     if (updates.durationFrames !== undefined && updates.fps === undefined) {
       newSettings.fps = settings.fps;
     }
