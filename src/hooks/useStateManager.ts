@@ -98,11 +98,11 @@ export function useStateManager({
     try {
       const computeCalculator = window.Desmos.GraphingCalculator(computeDiv, {
         // 計算専用なので最小限の設定
-        expressions: false,
-        graphpaper: false,
-        zoomButtons: false,
-        autosize: false,
-        showResetButtonOnGraphpaper: false,
+        // expressions: false,
+        // graphpaper: false,
+        // zoomButtons: false,
+        // autosize: false,
+        // showResetButtonOnGraphpaper: false,
       });
 
       computeCalculatorRef.current = computeCalculator;

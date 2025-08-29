@@ -36,7 +36,7 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
       // const seconds = currentFrame / fps;
 
       // まずキャッシュ済みスクリーンショットを取得
-      const cachedScreenshot = stateManager.getScreenshotAtFrame(currentFrame);
+      const cachedScreenshot = await stateManager.getScreenshotAtFrame(currentFrame);
       if (cachedScreenshot) {
         console.log("Using cached screenshot");
         setImageUrl(cachedScreenshot);

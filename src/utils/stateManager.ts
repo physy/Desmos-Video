@@ -55,12 +55,14 @@ export class StateManager {
   setScreenshotAtFrame(frame: number, screenshot: string) {
     const cache = this.stateCache.get(frame);
     if (cache) {
-      cache.screenshot = screenshot;
+      cache.screenshot = Promise.resolve(screenshot);
     } else {
-      this.stateCache.set(frame, { state: getBlankDesmosState(), screenshot });
+      this.stateCache.set(frame, {
+        state: getBlankDesmosState(),
+        screenshot: Promise.resolve(screenshot),
+      });
     }
   }
-  // ...existing code...
 
   // 計算用calculator取得用getter
   public getComputeCalculator(): Calculator | null {
@@ -85,7 +87,7 @@ export class StateManager {
   private computeCalculator: Calculator | null = null;
 
   // 状態キャッシュ（DesmosStateとスクリーンショット）
-  private stateCache: Map<number, { state: DesmosState; screenshot?: string }> = new Map();
+  private stateCache: Map<number, { state: DesmosState; screenshot?: Promise<string> }> = new Map();
 
   constructor(
     timeline: UnifiedEvent[] = [],
@@ -115,19 +117,71 @@ export class StateManager {
       throw new Error("Compute calculator not set. Call setComputeCalculator() first.");
     }
 
+    // 1. まずキャッシュを確認
     if (this.stateCache.has(frame)) {
       debugLog(`Cache hit for frame ${frame}`);
       return deepCopy(this.stateCache.get(frame)!.state);
     }
 
-    debugLog(`Computing state at frame ${frame}`);
+    // 2. キャッシュとStateEvent両方から最も近いframeを探す
+    let baseFrame = 0;
+    let baseState: DesmosState | null = null;
 
-    await this.resetComputeCalculatorToInitialState();
+    const cachedFrames = Array.from(this.stateCache.keys()).filter((f) => f <= frame);
+    const stateEventFrames = this.stateEvents.map((e) => e.frame ?? 0).filter((f) => f <= frame);
 
-    const eventsUpToFrame = this.getEventsUpToFrame(frame);
-    debugLog(`Applying ${eventsUpToFrame.length} events up to frame ${frame}`);
+    const candidateFrames: Array<{ frame: number; type: "cache" | "stateEvent" }> = [];
+    if (cachedFrames.length > 0) {
+      candidateFrames.push({ frame: Math.max(...cachedFrames), type: "cache" });
+    }
+    if (stateEventFrames.length > 0) {
+      candidateFrames.push({ frame: Math.max(...stateEventFrames), type: "stateEvent" });
+    }
 
-    for (const event of eventsUpToFrame) {
+    if (candidateFrames.length > 0) {
+      // frameが大きい方（＝より近い方）を選択
+      candidateFrames.sort((a, b) => b.frame - a.frame);
+      const best = candidateFrames[0];
+      baseFrame = best.frame;
+      if (best.type === "cache") {
+        const cache = this.stateCache.get(baseFrame)!;
+        baseState = deepCopy(cache.state);
+        debugLog(`Using cached state at frame ${baseFrame}`);
+      } else {
+        const stateEvent = this.stateEvents.find((e) => (e.frame ?? 0) === baseFrame)!;
+        baseState = deepCopy(stateEvent.state);
+        debugLog(`Using state event at frame ${baseFrame}`);
+      }
+    } else {
+      baseState = getBlankDesmosState();
+      baseFrame = 0;
+      debugLog(`Using blank state as base`);
+    }
+
+    // 3. 計算用calculatorをbaseStateで初期化
+    this.computeCalculator.setState(baseState);
+
+    // 4. baseFrame以降、frameまでのイベントを適用
+    // animationはbaseFrame以前から継続しているものも含める
+    const allEvents = this.getEventsUpToFrame(frame);
+    const eventsToApply: Array<UnifiedEvent | StateEvent> = [];
+    for (const event of allEvents) {
+      const eventFrame = event.frame ?? 0;
+      // console.log("🚀", event);
+      if (eventFrame > baseFrame) {
+        eventsToApply.push(event);
+      } else if (event.type === "animation" && event.animation && eventFrame <= baseFrame) {
+        // animationの終了フレームがbaseFrame以降なら適用対象
+        const animEndFrame = eventFrame + (event.animation.durationFrames ?? 0);
+        if (animEndFrame >= baseFrame && animEndFrame > baseFrame) {
+          eventsToApply.push(event);
+        }
+      }
+    }
+    debugLog(
+      `Applying ${eventsToApply.length} events from frame ${baseFrame} to ${frame} (including ongoing animations)`
+    );
+    for (const event of eventsToApply) {
       if ("type" in event && event.type === "state") {
         await this.applyStateEventToComputeCalculator(event as StateEvent);
       } else {
@@ -137,7 +191,7 @@ export class StateManager {
 
     const state = this.computeCalculator.getState();
 
-    // 解像度・pixelRatio・背景色などをvideoSettingsから取得
+    // 5. スクリーンショット取得
     let width = 1920;
     let height = 1080;
     let targetPixelRatio = 1;
@@ -152,30 +206,17 @@ export class StateManager {
         backgroundColor = this._videoSettings.advanced.backgroundColor ?? backgroundColor;
       }
     }
-    // ピクセル比を反映
     width = Math.round(width * targetPixelRatio);
     height = Math.round(height * targetPixelRatio);
-    // asyncScreenshotで非同期取得（全設定を反映）
-    let screenshot: string | undefined = undefined;
+    let screenshot: Promise<string> | undefined = undefined;
     if (this.computeCalculator && typeof this.computeCalculator.asyncScreenshot === "function") {
-      screenshot = await new Promise<string | undefined>((resolve) => {
-        try {
-          console.log("Taking screenshot with settings:", {
-            width,
-            height,
-            targetPixelRatio,
-            backgroundColor,
-          });
-          this.computeCalculator!.asyncScreenshot(
-            { width, height, targetPixelRatio },
-            (url: string) => {
-              resolve(url);
-            }
-          );
-        } catch (e) {
-          debugLog("Screenshot capture failed:", e);
-          resolve(undefined);
-        }
+      screenshot = new Promise<string>((resolve) => {
+        this.computeCalculator!.asyncScreenshot(
+          { width, height, targetPixelRatio },
+          (url: string) => {
+            resolve(url);
+          }
+        );
       });
     }
     this.stateCache.set(frame, { state: deepCopy(state), screenshot });
@@ -441,15 +482,24 @@ export class StateManager {
       else if (animation.type === "action" && animation.action) {
         const { steps } = animation.action; // 補間済みのステップ数
         const targetId = animation.targetId;
-
+        console.log(this.computeCalculator.getExpressions());
         // 指定回数アクションを実行
         for (let i = 0; i < steps; i++) {
           // FIXME: アクションがどうしても実行されない
           // コードの実行自体はされている
-          this.computeCalculator.controller.dispatch({ type: "action-single-step", id: targetId });
+          this.computeCalculator.controller.dispatch({
+            type: "action-single-step",
+            id: targetId,
+          });
           debugLog(`Action step ${i + 1}/${steps} for ${targetId}`);
         }
+        await new Promise<void>((resolve) => {
+          this.computeCalculator!.controller.evaluator.notifyWhenSynced(() => {
+            resolve();
+          });
+        });
         debugLog(`Applied action animation: ${targetId} executed ${steps} steps`);
+        console.log(this.computeCalculator.getExpressions());
       }
     } catch (error) {
       debugLog(`Error applying animation:`, error);
@@ -590,8 +640,8 @@ export class StateManager {
     };
   }
   // 指定時刻のスクリーンショットを取得
-  getScreenshotAtFrame(frame: number): string | undefined {
-    return this.stateCache.get(frame)?.screenshot;
+  async getScreenshotAtFrame(frame: number): Promise<string | undefined> {
+    return await this.stateCache.get(frame)?.screenshot;
   }
 
   // 特定の時刻での計算過程をデバッグ
