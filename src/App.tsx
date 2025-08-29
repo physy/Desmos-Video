@@ -269,8 +269,13 @@ function App() {
       if (stateManager) {
         stateManager.videoSettings = settings;
       }
+      // 動画長（durationFrames）が変更されたらタイムライン長も更新
+      setProject((prev) => ({
+        ...prev,
+        durationFrames: settings.durationFrames,
+      }));
     },
-    [adjustGraphAspectRatio, stateManager]
+    [adjustGraphAspectRatio, stateManager, setProject]
   );
 
   // イベント時間変更ハンドラー（ドラッグ対応）
@@ -601,7 +606,7 @@ function App() {
                         <VideoExportPanel
                           videoSettings={videoSettings}
                           onVideoSettingsChange={handleVideoSettingsChange}
-                          currentDuration={project.durationFrames}
+                          durationFrames={project.durationFrames}
                           fps={fps}
                           onSettingsChange={(settings) => {
                             console.log("Video export settings updated:", settings);
@@ -630,25 +635,11 @@ function App() {
                               <div>現在フレーム: {currentFrame}</div>
                             </div>
                           </div>
-
-                          <div className="p-2 bg-blue-50 rounded">
-                            <h3 className="text-xs font-medium text-blue-700 mb-2">StateManager</h3>
-                            <div className="text-xs text-blue-600 space-y-1">
-                              <div>新しいAPI方式を使用</div>
-                              <div>Desmos calculatorで状態計算</div>
-                              <div>Timeline Events: {getDebugInfo().timelineEventsCount}</div>
-                              <div>State Events: {getDebugInfo().stateEventsCount}</div>
-                            </div>
-                          </div>
-
-                          <div className="p-2 bg-green-50 rounded">
-                            <h3 className="text-xs font-medium text-green-700 mb-2">使用方法</h3>
-                            <div className="text-xs text-green-600 space-y-1">
-                              <div>• タイムライン上でダブルクリックでイベント挿入</div>
-                              <div>• イベントをドラッグして時刻変更（予定）</div>
-                              <div>• 変数アニメーションで時間軸での値変化</div>
-                              <div>• プロパティ変更でExpressionの外観変更</div>
-                            </div>
+                          {/* project詳細（raw json） */}
+                          <div className="p-2 bg-gray-100 rounded">
+                            <pre className="text-xs text-gray-600">
+                              {JSON.stringify(project, null, 2)}
+                            </pre>
                           </div>
                         </div>
                       </div>
