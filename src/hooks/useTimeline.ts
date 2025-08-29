@@ -223,6 +223,7 @@ export const useTimeline = (calculator: Calculator | null) => {
         }
         setCurrentFrame(currentProject.durationFrames);
         setIsPlaying(false);
+        isPlayingRef.current = false;
         return;
       }
 
@@ -250,7 +251,7 @@ export const useTimeline = (calculator: Calculator | null) => {
       animate();
     };
     animate();
-  }, [calculator, isPlaying, currentFrame, stateManager, project.fps]);
+  }, [calculator, currentFrame, stateManager, project.fps]);
 
   // アニメーションを停止
   const pause = useCallback(() => {
