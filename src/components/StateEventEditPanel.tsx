@@ -168,8 +168,7 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
-        <div className="mt-2 bg-gray-50 border rounded p-2 text-xs font-mono overflow-auto">
-          <label className="block text-sm font-medium text-gray-700 mb-1">JSON</label>
+        <div className="mt-2  text-xs font-mono overflow-auto">
           <textarea
             value={editingStateJson}
             onChange={(e) => {
@@ -178,7 +177,7 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
               setIsSyncFromCalculator(false); // ユーザー編集時は必ずfalse
             }}
             rows={12}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono text-xs"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md  font-mono text-xs"
             style={{
               whiteSpace: "pre-wrap",
               wordBreak: "break-all",
@@ -223,15 +222,12 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
-        <div className="mt-2 bg-gray-50 border rounded p-2 text-xs font-mono overflow-auto">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            State JSON（直接編集可）
-          </label>
+        <div className="mt-2 text-xs font-mono overflow-auto">
           <textarea
             value={editingStateJson}
             onChange={(e) => setEditingStateJson(e.target.value)}
             rows={12}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono text-xs"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-xs"
             style={{
               whiteSpace: "pre-wrap",
               wordBreak: "break-all",
