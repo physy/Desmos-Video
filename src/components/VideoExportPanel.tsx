@@ -105,6 +105,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
 
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const ffmpegRef = useRef(createFFmpeg({ log: true }));
   const messageRef = useRef<HTMLParagraphElement | null>(null);
 
@@ -272,6 +273,9 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
           );
         }
 
+        // プレビュー用img
+        setPreviewImage(imageUrl ?? null);
+
         const img = await new Promise<HTMLImageElement>((resolve) => {
           const image = new Image();
           image.crossOrigin = "anonymous";
@@ -297,29 +301,32 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
 
       // 動画生成
       const outputName = `output.${format.container}`;
-      if (format.container === "gif") {
-        // GIFはコーデック指定せず、-f gifを追加
-        await ffmpeg.run(
-          "-framerate",
-          String(fps),
-          "-i",
-          "frame_%04d.png",
-          "-f",
-          "gif",
-          outputName
-        );
-        // ...existing code...
-      } else {
-        await ffmpeg.run(
-          "-framerate",
-          String(fps),
-          "-i",
-          "frame_%04d.png",
-          "-c:v",
-          format.codec === "h265" ? "libx265" : "libx264",
-          outputName
-        );
-      }
+      const CROP_EVEN = ["-vf", "crop=floor(iw/2)*2:floor(ih/2)*2"];
+      const outFlags = {
+        // mp4s have to have even dimensions, so crop it to be even
+        mp4: [
+          "-vcodec",
+          format.codec == "h265" ? "libx265" : "libx264",
+          ...CROP_EVEN,
+          "-pix_fmt",
+          "yuv420p",
+        ],
+        webm: ["-vcodec", "libvpx-vp9", "-quality", "realtime", "-speed", "8"],
+        gif: ["-lavfi", "palettegen=stats_mode=diff[pal],[0:v][pal]paletteuse"],
+        apng: ["-plays", "0", "-f", "apng"],
+        webp: ["-vcodec", "libwebp", "-lossless", "1", "-loop", "0"],
+      }[format.container];
+
+      await ffmpeg.run(
+        "-r",
+        fps.toString(),
+        "-pix_fmt",
+        "rgba",
+        "-i",
+        "frame_%04d.png",
+        ...outFlags,
+        outputName
+      );
 
       const data = ffmpeg.FS("readFile", outputName);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -729,6 +736,21 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
               {exportProgress.toFixed(0)}% 完了
             </div>
             <div ref={messageRef} className="text-xs text-center text-gray-600"></div>
+            {/* プレビュー画像表示 */}
+            {previewImage && (
+              <div className="flex justify-center items-center mt-2">
+                <img
+                  src={previewImage}
+                  alt="現在撮影中のプレビュー"
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "240px",
+                    borderRadius: "8px",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
