@@ -68,6 +68,7 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
         keypad: false,
         expressions: true,
         expressionsCollapsed: true,
+        showIDs: true,
         settingsMenu: true,
         zoomButtons: false,
         expressionsTopbar: true,

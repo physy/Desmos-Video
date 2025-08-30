@@ -66,6 +66,7 @@ export interface GraphingCalculatorOptions {
   border?: boolean;
   lockViewport?: boolean;
   expressionsCollapsed?: boolean;
+  showIDs?: boolean;
   capExpressionSize?: boolean;
   authorFeatures?: boolean;
   images?: boolean;

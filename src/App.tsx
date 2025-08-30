@@ -160,18 +160,8 @@ function App() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [fileMenuOpen]);
-  // ページロード時に?showIDs=trueを自動追加
   // グラフ表示/プレビュー表示のタブ状態
   const [graphViewTab, setGraphViewTab] = useState<"graph" | "preview">("graph");
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      if (!url.searchParams.has("showIDs")) {
-        url.searchParams.append("showIDs", "true");
-        window.history.replaceState({}, "", url.toString());
-      }
-    }
-  }, []);
   const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline" | "export">("events");
   // 選択状態はuseTimelineで一元管理
   // selectedStateId, setSelectedStateId, selectedEventId, setSelectedEventIdを利用
