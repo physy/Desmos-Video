@@ -41,6 +41,10 @@ function App() {
     getDebugAtFrame,
     setProject,
     stateManager,
+    selectedStateId,
+    setSelectedStateId,
+    selectedEventId,
+    setSelectedEventId,
   } = useTimeline(calculator);
 
   // 保存・読み込みコールバックはuseTimelineの後で定義
@@ -169,9 +173,8 @@ function App() {
     }
   }, []);
   const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline" | "export">("events");
-  const [selectedEvent, setSelectedEvent] = useState<
-    TimelineEvent | StateEvent | { type: "initial" } | null
-  >(null);
+  // 選択状態はuseTimelineで一元管理
+  // selectedStateId, setSelectedStateId, selectedEventId, setSelectedEventIdを利用
   // フルHD初期値
   const DEFAULT_VIDEO_SETTINGS: VideoExportSettings = {
     durationFrames: 300,
@@ -536,38 +539,40 @@ function App() {
                   <div className="p-3 flex-1 overflow-auto min-h-0 relative">
                     {activeTab === "state" && (
                       <div className="h-full flex flex-col">
-                        {/* 1. state選択中 */}
-                        {selectedEvent &&
-                        typeof selectedEvent === "object" &&
-                        "id" in selectedEvent ? (
+                        {selectedStateId ? (
                           <StateEventEditPanel
                             selectedState={
-                              project.stateEvents.find((s) => s.id === selectedEvent.id) || null
+                              project.stateEvents.find((s) => s.id === selectedStateId) || null
                             }
                             calculator={calculator}
                             currentTime={currentFrame}
                             onStateUpdate={(state) => {
                               setProject((prev) => ({
                                 ...prev,
-                                stateEvents: prev.stateEvents.map((s) =>
-                                  s.id === state.id ? { ...s, ...state } : s
-                                ),
+                                stateEvents: prev.stateEvents.some((s) => s.id === state.id)
+                                  ? prev.stateEvents.map((s) =>
+                                      s.id === state.id ? { ...s, ...state } : s
+                                    )
+                                  : [...prev.stateEvents, state],
                               }));
-                              setSelectedEvent(state);
+                              setSelectedStateId(state.id);
                             }}
                             onStateDelete={() => {
-                              setProject((prev) => ({
-                                ...prev,
-                                stateEvents: prev.stateEvents.filter(
-                                  (s) => s.id !== selectedEvent.id
-                                ),
-                              }));
-                              setSelectedEvent(null);
+                              if (selectedStateId) {
+                                setProject((prev) => ({
+                                  ...prev,
+                                  stateEvents: prev.stateEvents.filter(
+                                    (s) => s.id !== selectedStateId
+                                  ),
+                                }));
+                                setSelectedStateId(null);
+                              }
                             }}
-                            onDeselect={() => setSelectedEvent(null)}
+                            onDeselect={() => setSelectedStateId(null)}
+                            selectedStateId={selectedStateId}
+                            setSelectedStateId={setSelectedStateId}
                           />
                         ) : (
-                          /* 3. 何も選択していない: 新規state挿入 */
                           <StateEventEditPanel
                             selectedState={null}
                             calculator={calculator}
@@ -577,9 +582,12 @@ function App() {
                                 ...prev,
                                 stateEvents: [...prev.stateEvents, state],
                               }));
-                              setSelectedEvent(state);
+                              setSelectedStateId(state.id);
                             }}
-                            onDeselect={() => setSelectedEvent(null)}
+                            onStateDelete={undefined}
+                            onDeselect={() => setSelectedStateId(null)}
+                            selectedStateId={selectedStateId}
+                            setSelectedStateId={setSelectedStateId}
                           />
                         )}
                       </div>
@@ -588,23 +596,12 @@ function App() {
                     {activeTab === "events" && (
                       <div className="h-full">
                         <UnifiedEventEditPanel
-                          selectedEvent={
-                            selectedEvent &&
-                            typeof selectedEvent === "object" &&
-                            "id" in selectedEvent
-                              ? getUnifiedEvent(selectedEvent.id || "")
-                              : null
-                          }
+                          selectedEvent={selectedEventId ? getUnifiedEvent(selectedEventId) : null}
                           onEventUpdate={updateUnifiedEvent}
                           onEventDelete={() => {
-                            if (
-                              selectedEvent &&
-                              typeof selectedEvent === "object" &&
-                              "id" in selectedEvent &&
-                              typeof selectedEvent.id === "string"
-                            ) {
-                              removeEvent(selectedEvent.id);
-                              setSelectedEvent(null);
+                            if (selectedEventId) {
+                              removeEvent(selectedEventId);
+                              setSelectedEventId(null);
                             }
                           }}
                         />
@@ -679,33 +676,32 @@ function App() {
                 onPause={pause}
                 onInsertEvent={(frame, event) => insertEvent({ ...event, frame })}
                 onInsertState={(frame) => captureCurrentState(`State at frame ${frame}`)}
-                onEventSelect={setSelectedEvent}
+                onEventSelect={(event) => {
+                  if (event && event.id) {
+                    setSelectedEventId(event.id);
+                    setSelectedStateId(null);
+                  }
+                  if (!event) {
+                    setSelectedEventId(null);
+                  }
+                }}
                 onStateSelect={(state) => {
-                  setSelectedEvent(state);
+                  if (state && state.id) setSelectedStateId(state.id);
+                  else setSelectedStateId(null);
                 }}
                 onEventTimeChange={handleEventTimeChange}
                 onStateTimeChange={handleStateTimeChange}
                 onEventDelete={(eventId) => {
-                  if (
-                    selectedEvent &&
-                    typeof selectedEvent === "object" &&
-                    "id" in selectedEvent &&
-                    selectedEvent.id === eventId
-                  )
-                    setSelectedEvent(null);
+                  if (selectedEventId === eventId) setSelectedEventId(null);
                   removeEvent(eventId);
                 }}
                 onEventDuplicate={(event) => {
-                  // 新しいIDと時刻+0.1で複製
+                  // 新しいIDと時刻+1で複製
                   const newEvent = { ...event, id: undefined, frame: event.frame + 1 };
                   insertEvent(newEvent);
                 }}
                 setActiveTab={setActiveTab}
-                selectedEventId={
-                  selectedEvent && typeof selectedEvent === "object" && "id" in selectedEvent
-                    ? selectedEvent.id
-                    : undefined
-                }
+                selectedEventId={selectedEventId ?? undefined}
               />
             </div>
           </div>

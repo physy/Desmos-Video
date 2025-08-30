@@ -109,6 +109,10 @@ export const useTimeline = (calculator: Calculator | null) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const animationRef = useRef<number | undefined>(undefined);
 
+  // 選択状態を一元管理
+  const [selectedStateId, setSelectedStateId] = useState<string | null>(null);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+
   // StateManagerのフックを使用
   const {
     stateManager,
@@ -274,6 +278,7 @@ export const useTimeline = (calculator: Calculator | null) => {
         ...prev,
         stateEvents: [...prev.stateEvents, stateEvent].sort((a, b) => a.frame - b.frame),
       }));
+      setSelectedStateId(stateEvent.id); // 追加後は新規stateを選択
 
       console.log(`[useTimeline] State event added at frame ${frame}:`, stateEvent);
       return stateEvent;
@@ -292,10 +297,12 @@ export const useTimeline = (calculator: Calculator | null) => {
         ...prev,
         stateEvents: prev.stateEvents.filter((event) => event.id !== eventId),
       }));
+      // 削除後は選択解除
+      if (selectedStateId === eventId) setSelectedStateId(null);
 
       console.log(`[useTimeline] State event removed: ${eventId}`);
     },
-    [stateManager, removeEventFromStateManager]
+    [stateManager, removeEventFromStateManager, selectedStateId]
   );
 
   // 現在時刻でStateEventを作成
@@ -318,6 +325,7 @@ export const useTimeline = (calculator: Calculator | null) => {
         ...prev,
         timeline: [...prev.timeline, newEvent].sort((a, b) => a.frame - b.frame),
       }));
+      setSelectedEventId(newEvent.id); // 追加後は新規eventを選択
 
       // StateManagerに追加
       const unifiedEvent = convertTimelineEventToUnifiedEvent(newEvent);
@@ -345,13 +353,15 @@ export const useTimeline = (calculator: Calculator | null) => {
         ...prev,
         timeline: prev.timeline.filter((event) => event.id !== eventId),
       }));
+      // 削除後は選択解除
+      if (selectedEventId === eventId) setSelectedEventId(null);
 
       // StateManagerからも削除
       removeEventFromStateManager(eventId);
 
       console.log(`[useTimeline] Event removed: ${eventId}`);
     },
-    [removeEventFromStateManager]
+    [removeEventFromStateManager, selectedEventId]
   );
 
   // TimelineEventを更新
@@ -395,6 +405,7 @@ export const useTimeline = (calculator: Calculator | null) => {
         ...prev,
         timeline: [...prev.timeline, newEvent].sort((a, b) => a.frame - b.frame),
       }));
+      setSelectedEventId(newEvent.id); // 挿入後は新規eventを選択
 
       // StateManagerに追加
       const unifiedEvent = convertTimelineEventToUnifiedEvent(newEvent);
@@ -483,5 +494,9 @@ export const useTimeline = (calculator: Calculator | null) => {
     getUnifiedEvent,
     stateManager,
     currentFrame,
+    selectedStateId,
+    setSelectedStateId,
+    selectedEventId,
+    setSelectedEventId,
   };
 };

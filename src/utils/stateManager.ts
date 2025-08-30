@@ -578,6 +578,7 @@ export class StateManager {
 
   // StateEventを追加
   addStateEvent(stateEvent: StateEvent): void {
+    if (stateEvent.frame < 0) return;
     this.stateEvents.push(stateEvent);
     this.stateEvents.sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0));
     this.clearCache();

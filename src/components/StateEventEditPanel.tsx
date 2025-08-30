@@ -8,6 +8,8 @@ export interface StateEventEditPanelProps {
   onStateDelete?: () => void;
   onDeselect?: () => void;
   calculator?: Calculator | null;
+  selectedStateId: string | null;
+  setSelectedStateId: (id: string | null) => void;
 }
 
 export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentTime?: number }> = ({
@@ -17,6 +19,8 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
   onDeselect,
   calculator,
   currentTime,
+  selectedStateId,
+  setSelectedStateId,
 }) => {
   const [editingState, setEditingState] = useState<StateEvent | null>(selectedState);
   const [editingStateJson, setEditingStateJson] = useState<string>("");
@@ -123,12 +127,13 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
       const target = e.target as HTMLElement;
       // パネル外かつDesmos calculator外クリック時のみ選択解除
       if (!target.closest(".state-event-edit-panel") && !target.closest(".dcg-container")) {
+        setSelectedStateId(null);
         if (onDeselect) onDeselect();
       }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [onDeselect]);
+  }, [onDeselect, setSelectedStateId]);
 
   const handleStateChange = (updates: Partial<StateEvent>) => {
     if (!editingState) return;
@@ -137,15 +142,17 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
   };
 
   const handleSaveOrInsert = () => {
-    if (isNewState && isJsonValid && hasUnsavedChanges) {
+    if (isJsonValid && hasUnsavedChanges) {
       // 新規StateEvent挿入
       const parsed = JSON.parse(editingStateJson);
+      const newId = `state_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       onStateUpdate({
         frame: newStateTime,
         type: "state",
         state: parsed,
-        id: `state_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: newId,
       });
+      setSelectedStateId(newId); // 挿入後は新規stateを選択
       setHasUnsavedChanges(false);
     } else if (editingState && hasUnsavedChanges) {
       // 既存StateEvent更新
@@ -187,7 +194,9 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
           />
           <button
             onClick={handleSaveOrInsert}
-            className="mt-2 px-3 py-2 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+            className={`mt-2 px-3 py-2 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 ${
+              !isJsonValid || !hasUnsavedChanges ? "opacity-50 cursor-not-allowed" : ""
+            }`}
             disabled={!isJsonValid || !hasUnsavedChanges}
           >
             新規Stateを挿入

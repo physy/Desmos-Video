@@ -31,7 +31,7 @@ interface TimelineControlsProps {
   onPause: () => void;
   onInsertEvent?: (time: number, event: Omit<TimelineEvent, "id" | "time" | "frame">) => void;
   onInsertState?: (time: number) => void;
-  onEventSelect?: (event: TimelineEvent) => void;
+  onEventSelect?: (event: TimelineEvent | null) => void;
   onEventTimeChange?: (eventId: string, newTime: number) => void; // イベントの時間変更
   onStateTimeChange?: (stateId: string, newTime: number) => void; // Stateの時間変更
   onEventDelete: (eventId: string) => void;
@@ -681,7 +681,10 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
               <div
                 className="absolute top-0 left-0 h-8 bg-gray-700 rounded cursor-pointer z-10"
                 style={{ width: "100%" }}
-                onClick={handleTimelineClick}
+                onClick={(e) => {
+                  handleTimelineClick(e);
+                  if (onEventSelect) onEventSelect(null);
+                }}
                 onDoubleClick={handleTimelineDoubleClick}
                 title="クリックでシーク、ダブルクリックでイベント挿入"
               >
