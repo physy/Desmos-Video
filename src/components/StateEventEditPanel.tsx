@@ -142,7 +142,16 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
   };
 
   const handleSaveOrInsert = () => {
-    if (isJsonValid && hasUnsavedChanges) {
+    if (editingState && hasUnsavedChanges) {
+      // 既存StateEvent更新
+      try {
+        const parsed = JSON.parse(editingStateJson);
+        onStateUpdate({ ...editingState, state: parsed });
+        setHasUnsavedChanges(false);
+      } catch {
+        setIsJsonValid(false);
+      }
+    } else if (isJsonValid && hasUnsavedChanges) {
       // 新規StateEvent挿入
       const parsed = JSON.parse(editingStateJson);
       const newId = `state_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -153,10 +162,6 @@ export const StateEventEditPanel: React.FC<StateEventEditPanelProps & { currentT
         id: newId,
       });
       setSelectedStateId(newId); // 挿入後は新規stateを選択
-      setHasUnsavedChanges(false);
-    } else if (editingState && hasUnsavedChanges) {
-      // 既存StateEvent更新
-      onStateUpdate(editingState);
       setHasUnsavedChanges(false);
     }
   };
