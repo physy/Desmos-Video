@@ -293,13 +293,23 @@ function App() {
   // StateEvent時間変更ハンドラー（ドラッグ対応）
   const handleStateTimeChange = useCallback(
     (stateId: string, newTime: number) => {
-      setProject((prev: typeof project) => ({
-        ...prev,
-        stateEvents: prev.stateEvents
-          .map((state: StateEvent) => (state.id === stateId ? { ...state, frame: newTime } : state))
-          .sort((a: StateEvent, b: StateEvent) => a.frame - b.frame),
-      }));
-      console.log(`Moved state ${stateId} to time ${newTime.toFixed(3)}s`);
+      if (newTime < 0) {
+        setProject((prev: typeof project) => ({
+          ...prev,
+          stateEvents: prev.stateEvents.filter((state: StateEvent) => state.id !== stateId),
+        }));
+        console.log(`Deleted state ${stateId}`);
+      } else {
+        setProject((prev: typeof project) => ({
+          ...prev,
+          stateEvents: prev.stateEvents
+            .map((state: StateEvent) =>
+              state.id === stateId ? { ...state, frame: newTime } : state
+            )
+            .sort((a: StateEvent, b: StateEvent) => a.frame - b.frame),
+        }));
+        console.log(`Moved state ${stateId} to time ${newTime.toFixed(3)}s`);
+      }
     },
     [setProject]
   );
