@@ -1,10 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { Calculator } from "../types/desmos";
 
 export interface GraphSettingsPanelProps {
   computeCalculator?: Calculator | null;
   initialSettings: GraphSettings;
-  onSave?: () => void;
+  onSave?: (settings: GraphSettings) => void;
 }
 
 export interface GraphSettings {
@@ -51,8 +51,34 @@ export const GraphSettingsPanel: React.FC<GraphSettingsPanelProps> = ({
   const [settings, setSettings] = useState<GraphSettings>(
     initialSettings ?? DEFAULT_GRAPH_SETTINGS
   );
-
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // initialSettingsが変化したらsettingsも更新し、computeCalculatorにも反映
+  useEffect(() => {
+    setSettings(initialSettings ?? DEFAULT_GRAPH_SETTINGS);
+    setHasUnsavedChanges(false);
+
+    // computeCalculatorにも反映
+    if (
+      computeCalculator &&
+      computeCalculator.controller &&
+      computeCalculator.controller.graphSettings
+    ) {
+      const gs = computeCalculator.controller.graphSettings as Partial<GraphSettings>;
+      (Object.keys(initialSettings ?? DEFAULT_GRAPH_SETTINGS) as (keyof GraphSettings)[]).forEach(
+        (key) => {
+          const value = (initialSettings ?? DEFAULT_GRAPH_SETTINGS)[key];
+          if (typeof value === "number") {
+            (gs[key] as number | undefined) = value as number;
+          } else if (typeof value === "boolean") {
+            (gs[key] as boolean | undefined) = value as boolean;
+          } else {
+            (gs[key] as string | undefined) = value as string;
+          }
+        }
+      );
+    }
+  }, [initialSettings, computeCalculator]);
 
   const handleChange = <K extends keyof GraphSettings>(key: K, value: GraphSettings[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -76,9 +102,9 @@ export const GraphSettingsPanel: React.FC<GraphSettingsPanelProps> = ({
           (gs[key] as string | undefined) = settings[key] as string;
         }
       });
-      setHasUnsavedChanges(false);
-      if (typeof onSave === "function") onSave();
     }
+    setHasUnsavedChanges(false);
+    if (typeof onSave === "function") onSave(settings);
   };
 
   return (

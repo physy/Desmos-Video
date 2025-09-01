@@ -10,7 +10,7 @@ import { GraphSettingsPanel, type GraphSettings } from "./components/GraphSettin
 import { ResizablePanel } from "./components/ResizablePanel";
 import { useTimeline } from "./hooks/useTimeline";
 import type { Calculator } from "./types/desmos";
-import type { TimelineEvent, VideoExportSettings } from "./types/timeline";
+import type { TimelineEvent, VideoExportSettings, AnimationProject } from "./types/timeline";
 import "./App.css";
 import { StateEventEditPanel } from "./components/StateEventEditPanel";
 
@@ -22,6 +22,25 @@ function App() {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   // calculatorのuseState宣言を先に（重複宣言があれば削除）
   const [calculator, setCalculator] = useState<Calculator | null>(null);
+  // GraphSettingsの状態
+  const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
+    axisLineWidth: 1.5,
+    axisLineOffset: 0.25,
+    axisOpacity: 0.9,
+    curveOpacity: 0.7,
+    disableFill: false,
+    graphLineWidth: 2.5,
+    highlight: false,
+    labelHangingColor: "rgba(150,150,150,1)",
+    labelSize: 14,
+    lastChangedAxis: "x",
+    majorAxisOpacity: 0.4,
+    minorAxisOpacity: 0.12,
+    pixelsPerLabel: 80,
+    pointLineWidth: 9,
+    squareAxes: false,
+  };
+  const [graphSettings, setGraphSettings] = useState<GraphSettings>(DEFAULT_GRAPH_SETTINGS);
   // useTimelineの呼び出し（重複宣言があれば削除）
   const {
     project,
@@ -50,7 +69,12 @@ function App() {
 
   // 保存・読み込みコールバックはuseTimelineの後で定義
   const handleSaveProject = useCallback(() => {
-    const dataStr = JSON.stringify(project, null, 2);
+    // AnimationProject型で保存（graphSettingsも含む）
+    const saveObj: AnimationProject = {
+      ...project,
+      graphSettings,
+    };
+    const dataStr = JSON.stringify(saveObj, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -59,7 +83,7 @@ function App() {
     a.click();
     URL.revokeObjectURL(url);
     setFileMenuOpen(false);
-  }, [project]);
+  }, [project, graphSettings]);
 
   const handleLoadProject = useCallback(() => {
     const input = document.createElement("input");
@@ -71,7 +95,11 @@ function App() {
       const reader = new FileReader();
       reader.onload = (ev) => {
         try {
-          const json = JSON.parse(ev.target?.result as string);
+          const json: AnimationProject = JSON.parse(ev.target?.result as string);
+          // graphSettingsも復元
+          if (json.graphSettings) {
+            setGraphSettings(json.graphSettings);
+          }
           setProject(json);
         } catch (err) {
           alert("読み込みに失敗しました: " + err);
@@ -81,7 +109,7 @@ function App() {
     };
     input.click();
     setFileMenuOpen(false);
-  }, [setProject]);
+  }, [setProject, setGraphSettings]);
 
   const fileMenuItems = [
     {
@@ -166,25 +194,6 @@ function App() {
   const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline" | "export" | "graph">(
     "events"
   );
-  // GraphSettingsの状態
-  const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
-    axisLineWidth: 1.5,
-    axisLineOffset: 0.25,
-    axisOpacity: 0.9,
-    curveOpacity: 0.7,
-    disableFill: false,
-    graphLineWidth: 2.5,
-    highlight: false,
-    labelHangingColor: "rgba(150,150,150,1)",
-    labelSize: 14,
-    lastChangedAxis: "x",
-    majorAxisOpacity: 0.4,
-    minorAxisOpacity: 0.12,
-    pixelsPerLabel: 80,
-    pointLineWidth: 9,
-    squareAxes: false,
-  };
-  const [graphSettings, setGraphSettings] = useState<GraphSettings>(DEFAULT_GRAPH_SETTINGS);
   // 選択状態はuseTimelineで一元管理
   // selectedStateId, setSelectedStateId, selectedEventId, setSelectedEventIdを利用
   // フルHD初期値
@@ -635,7 +644,8 @@ function App() {
                         <GraphSettingsPanel
                           computeCalculator={stateManager?.getComputeCalculator() || null}
                           initialSettings={graphSettings}
-                          onSave={() => {
+                          onSave={(settings) => {
+                            setGraphSettings(settings);
                             stateManager?.clearCache();
                           }}
                         />

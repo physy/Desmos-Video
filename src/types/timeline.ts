@@ -177,12 +177,15 @@ export interface AnimationEvent {
   id?: string;
 }
 
+import type { GraphSettings } from "../components/GraphSettingsPanel";
+
 export interface AnimationProject {
   timeline: TimelineEvent[];
   stateEvents: StateEvent[];
   continuousEvents: ContinuousEvent[];
   durationFrames: number;
   fps?: number;
+  graphSettings?: GraphSettings;
 }
 
 export interface CheckpointState {
