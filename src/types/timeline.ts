@@ -186,6 +186,7 @@ export interface AnimationProject {
   durationFrames: number;
   fps?: number;
   graphSettings?: GraphSettings;
+  videoExportSettings?: VideoExportSettings;
 }
 
 export interface CheckpointState {

@@ -41,6 +41,28 @@ function App() {
     squareAxes: false,
   };
   const [graphSettings, setGraphSettings] = useState<GraphSettings>(DEFAULT_GRAPH_SETTINGS);
+
+  // VideoExportSettingsの状態（宣言を前方へ移動）
+  const DEFAULT_VIDEO_SETTINGS: VideoExportSettings = {
+    durationFrames: 300,
+    fps: 30,
+    resolution: {
+      width: 1920,
+      height: 1080,
+      preset: "1080p",
+    },
+    quality: { bitrate: 5000, preset: "standard" },
+    format: { container: "mp4", codec: "h264" },
+    advanced: {
+      targetPixelRatio: 1,
+      backgroundColor: "#ffffff",
+      antialias: true,
+      motionBlur: false,
+      frameInterpolation: false,
+    },
+    metadata: { title: "Desmos Animation", description: "", author: "", tags: [] },
+  };
+  const [videoSettings, setVideoSettings] = useState<VideoExportSettings>(DEFAULT_VIDEO_SETTINGS);
   // useTimelineの呼び出し（重複宣言があれば削除）
   const {
     project,
@@ -67,23 +89,26 @@ function App() {
     setSelectedEventId,
   } = useTimeline(calculator);
 
-  // 保存・読み込みコールバックはuseTimelineの後で定義
+  // ...existing code...
+
+  // videoSettings宣言の後に保存・読み込みコールバックを定義
   const handleSaveProject = useCallback(() => {
-    // AnimationProject型で保存（graphSettingsも含む）
+    // AnimationProject型で保存（graphSettings, videoExportSettingsも含む）
     const saveObj: AnimationProject = {
       ...project,
       graphSettings,
+      videoExportSettings: videoSettings,
     };
     const dataStr = JSON.stringify(saveObj, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "desmos_project.json";
+    a.download = `${videoSettings.metadata.title || "desmos_project"}.json`;
     a.click();
     URL.revokeObjectURL(url);
     setFileMenuOpen(false);
-  }, [project, graphSettings]);
+  }, [project, graphSettings, videoSettings]);
 
   const handleLoadProject = useCallback(() => {
     const input = document.createElement("input");
@@ -100,6 +125,10 @@ function App() {
           if (json.graphSettings) {
             setGraphSettings(json.graphSettings);
           }
+          // videoExportSettingsも復元
+          if (json.videoExportSettings) {
+            setVideoSettings(json.videoExportSettings);
+          }
           setProject(json);
         } catch (err) {
           alert("読み込みに失敗しました: " + err);
@@ -109,7 +138,7 @@ function App() {
     };
     input.click();
     setFileMenuOpen(false);
-  }, [setProject, setGraphSettings]);
+  }, [setProject, setGraphSettings, setVideoSettings]);
 
   const fileMenuItems = [
     {
@@ -197,26 +226,7 @@ function App() {
   // 選択状態はuseTimelineで一元管理
   // selectedStateId, setSelectedStateId, selectedEventId, setSelectedEventIdを利用
   // フルHD初期値
-  const DEFAULT_VIDEO_SETTINGS: VideoExportSettings = {
-    durationFrames: 300,
-    fps: 30,
-    resolution: {
-      width: 1920,
-      height: 1080,
-      preset: "1080p",
-    },
-    quality: { bitrate: 5000, preset: "standard" },
-    format: { container: "mp4", codec: "h264" },
-    advanced: {
-      targetPixelRatio: 1,
-      backgroundColor: "#ffffff",
-      antialias: true,
-      motionBlur: false,
-      frameInterpolation: false,
-    },
-    metadata: { title: "Desmos Animation", description: "", author: "", tags: [] },
-  };
-  const [videoSettings, setVideoSettings] = useState<VideoExportSettings>(DEFAULT_VIDEO_SETTINGS);
+  // ...existing code...
   const fps = videoSettings?.fps || 30;
   const [graphAspectRatio, setGraphAspectRatio] = useState<number>(16 / 9); // フルHDをデフォルト
 
@@ -299,7 +309,7 @@ function App() {
         durationFrames: settings.durationFrames,
       }));
     },
-    [adjustGraphAspectRatio, stateManager, setProject]
+    [adjustGraphAspectRatio, stateManager, setProject, setVideoSettings]
   );
 
   // イベント時間変更ハンドラー（ドラッグ対応）
