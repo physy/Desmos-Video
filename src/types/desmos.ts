@@ -151,6 +151,7 @@ export interface Calculator {
     options?: {
       width?: number;
       height?: number;
+      showLabels?: boolean;
       targetPixelRatio?: number;
     },
     callback?: (url: string) => void
@@ -188,6 +189,24 @@ export interface Calculator {
   resize: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   controller: any;
+  // controller.graphSettings の主なプロパティ:
+  // axisLineOffset: offset of axis lines, presumably in px. default value 0.25
+  // axisLineWidth: width of axis lines, presumably in px. default value 1.5;
+  // axisOpacity: axis line opacity. default value 0.9;
+  // config: lean version of Calc.settings
+  // curveOpacity: doesn’t appear to do anything, probably used to be curve opacity before the advanced styling update. default value 0.7
+  // disableFill: disables fill. default value false.
+  // globalCurveColor: appears to do nothing, default value undefined.
+  // graphLineWidth: another likely relic from the pre-AS days. default value 2.5.
+  // highlight: no clue. default value false.
+  // labelHangingColor: angle label color for polar mode. default value "rgba(150,150,150,1)".
+  // labelSize: size of all graph labels. default value 14.
+  // lastChangedAxis: controls which axis is preserved when changing graph window size. default value “x”.
+  // majorAxisOpacity: opacity of major axis. default value 0.4.
+  // minorAxisOpacity: opacity of minor axis. default value 0.12.
+  // pixelsPerLabel: amount of pixels reserved for each graph label. default value 80.
+  // pointLineWidth: probably another pre-AS relic. Default value 9.
+  // squareAxes: indicates if the axes form squares. If not, a “Zoom squares” button appears in the regular graph settings.
   observeEvent: (event: string, callback: (...args: unknown[]) => void) => void;
   unobserveEvent: (event: string, callback: (...args: unknown[]) => void) => void;
 }

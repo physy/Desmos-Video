@@ -256,9 +256,16 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
 
         let imageUrl: string | null = null;
         if (typeof calculator.asyncScreenshot === "function") {
-          imageUrl = await new Promise((resolve) =>
-            calculator.asyncScreenshot({ width, height }, (url: string) => resolve(url))
-          );
+          imageUrl = await new Promise<string>((resolve) => {
+            calculator.controller.evaluator.notifyWhenSynced(() => {
+              calculator.controller
+                .getGrapher()
+                .asyncScreenshot(
+                  { width, height, showLabels: true, targetPixelRatio: 3 },
+                  (url: string) => resolve(url)
+                );
+            });
+          });
         }
 
         // プレビュー用img
@@ -471,7 +478,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
       </div>
 
       {/* 品質設定 */}
-      <div className="space-y-3">
+      {/* <div className="space-y-3">
         <h3 className="text-sm font-medium text-gray-700 border-b pb-1">品質</h3>
 
         <div>
@@ -512,7 +519,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
             className="w-full"
           />
         </div>
-      </div>
+      </div> */}
 
       {/* フォーマット設定 */}
       <div className="space-y-3">
@@ -564,7 +571,6 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
       {/* 詳細設定 */}
       <div className="space-y-3">
         <h3 className="text-sm font-medium text-gray-700 border-b pb-1">詳細設定</h3>
-
         <div className="space-y-2">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -586,10 +592,8 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
               }
               className="w-full"
             />
-            <div className="text-xs text-gray-500">高い値ほど鮮明だが処理時間増加</div>
           </div>
-
-          <div className="space-y-1">
+          {/* <div className="space-y-1">
             <label className="flex items-center">
               <input
                 type="checkbox"
@@ -606,7 +610,6 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
               />
               <span className="text-sm">アンチエイリアス</span>
             </label>
-
             <label className="flex items-center">
               <input
                 type="checkbox"
@@ -623,7 +626,6 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
               />
               <span className="text-sm">モーションブラー（予定）</span>
             </label>
-
             <label className="flex items-center">
               <input
                 type="checkbox"
@@ -640,7 +642,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
               />
               <span className="text-sm">フレーム補間（予定）</span>
             </label>
-          </div>
+          </div> */}
         </div>
       </div>
 

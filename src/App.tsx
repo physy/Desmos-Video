@@ -6,6 +6,7 @@ import type { StateEvent } from "./types/timeline";
 import { UnifiedEventEditPanel } from "./components/UnifiedEventEditPanel";
 // ...existing code...
 import { VideoExportPanel } from "./components/VideoExportPanel";
+import { GraphSettingsPanel, type GraphSettings } from "./components/GraphSettingsPanel";
 import { ResizablePanel } from "./components/ResizablePanel";
 import { useTimeline } from "./hooks/useTimeline";
 import type { Calculator } from "./types/desmos";
@@ -162,7 +163,28 @@ function App() {
   }, [fileMenuOpen]);
   // グラフ表示/プレビュー表示のタブ状態
   const [graphViewTab, setGraphViewTab] = useState<"graph" | "preview">("graph");
-  const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline" | "export">("events");
+  const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline" | "export" | "graph">(
+    "events"
+  );
+  // GraphSettingsの状態
+  const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
+    axisLineWidth: 1.5,
+    axisLineOffset: 0.25,
+    axisOpacity: 0.9,
+    curveOpacity: 0.7,
+    disableFill: false,
+    graphLineWidth: 2.5,
+    highlight: false,
+    labelHangingColor: "rgba(150,150,150,1)",
+    labelSize: 14,
+    lastChangedAxis: "x",
+    majorAxisOpacity: 0.4,
+    minorAxisOpacity: 0.12,
+    pixelsPerLabel: 80,
+    pointLineWidth: 9,
+    squareAxes: false,
+  };
+  const [graphSettings, setGraphSettings] = useState<GraphSettings>(DEFAULT_GRAPH_SETTINGS);
   // 選択状態はuseTimelineで一元管理
   // selectedStateId, setSelectedStateId, selectedEventId, setSelectedEventIdを利用
   // フルHD初期値
@@ -504,6 +526,16 @@ function App() {
                       Event
                     </button>
                     <button
+                      onClick={() => setActiveTab("graph")}
+                      className={`flex-1 px-2 py-2 text-xs font-medium ${
+                        activeTab === "graph"
+                          ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      Graph
+                    </button>
+                    <button
                       onClick={() => setActiveTab("export")}
                       className={`flex-1 px-2 py-2 text-xs font-medium ${
                         activeTab === "export"
@@ -593,6 +625,18 @@ function App() {
                               removeEvent(selectedEventId);
                               setSelectedEventId(null);
                             }
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {activeTab === "graph" && (
+                      <div className="h-full">
+                        <GraphSettingsPanel
+                          computeCalculator={stateManager?.getComputeCalculator() || null}
+                          initialSettings={graphSettings}
+                          onSave={() => {
+                            stateManager?.clearCache();
                           }}
                         />
                       </div>

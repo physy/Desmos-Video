@@ -211,12 +211,12 @@ export class StateManager {
     let screenshot: Promise<string> | undefined = undefined;
     if (this.computeCalculator && typeof this.computeCalculator.asyncScreenshot === "function") {
       screenshot = new Promise<string>((resolve) => {
-        this.computeCalculator!.asyncScreenshot(
-          { width, height, targetPixelRatio },
-          (url: string) => {
-            resolve(url);
-          }
-        );
+        this.computeCalculator!.controller.evaluator.notifyWhenSynced(() => {
+          this.computeCalculator!.controller.getGrapher().asyncScreenshot(
+            { width, height, showLabels: true, targetPixelRatio },
+            (url: string) => resolve(url)
+          );
+        });
       });
     }
     this.stateCache.set(frame, { state: deepCopy(state), screenshot });
