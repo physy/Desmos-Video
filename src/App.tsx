@@ -135,6 +135,46 @@ function App() {
 
   // 数式・字幕の選択状態
   const [selectedFormulaElementId, setSelectedFormulaElementId] = useState<string | null>(null);
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [selectedElementType, setSelectedElementType] = useState<"formula" | "subtitle" | null>(
+    null
+  );
+
+  // 要素選択ハンドラー
+  const handleElementSelect = useCallback(
+    (id: string | null, type: "formula" | "subtitle" | null) => {
+      setSelectedFormulaElementId(id);
+      setSelectedElementId(id);
+      setSelectedElementType(type);
+      // 数式・字幕がクリックされたらformulaタブを開く
+      if (id && type) {
+        setActiveTab("formula");
+      }
+    },
+    []
+  );
+
+  // 数式更新ハンドラー
+  const handleFormulaUpdate = useCallback(
+    (id: string, updates: Partial<FormulaElement>) => {
+      const currentFormula = formulas.find((f) => f.id === id);
+      if (currentFormula) {
+        updateElement({ ...currentFormula, ...updates });
+      }
+    },
+    [formulas, updateElement]
+  );
+
+  // 字幕更新ハンドラー
+  const handleSubtitleUpdate = useCallback(
+    (id: string, updates: Partial<SubtitleElement>) => {
+      const currentSubtitle = subtitles.find((s) => s.id === id);
+      if (currentSubtitle) {
+        updateElement({ ...currentSubtitle, ...updates });
+      }
+    },
+    [subtitles, updateElement]
+  );
 
   // 数式・字幕データの変更をプロジェクトに反映しない（保存時のみ同期）
 
@@ -524,7 +564,7 @@ function App() {
             </div>
             <div className="menu-item relative mr-2">
               <button className="font-semibold text-gray-700 hover:text-blue-600 px-2 py-1 rounded">
-                編集
+                ヘルプ
               </button>
             </div>
           </div>
@@ -611,6 +651,11 @@ function App() {
                         fps={fps}
                         formulas={formulas}
                         subtitles={subtitles}
+                        selectedElementId={selectedElementId}
+                        selectedElementType={selectedElementType}
+                        onElementSelect={handleElementSelect}
+                        onFormulaUpdate={handleFormulaUpdate}
+                        onSubtitleUpdate={handleSubtitleUpdate}
                       />
                     </div>
                   )}

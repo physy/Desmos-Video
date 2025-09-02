@@ -69,6 +69,13 @@ interface OverlayRendererProps {
   className?: string;
   pixelRatio?: number; // 高解像度対応
   debug?: boolean; // デバッグモードの制御
+  // 選択状態
+  selectedElementId?: string | null;
+  selectedElementType?: "formula" | "subtitle" | null;
+  // インタラクティブ操作用のコールバック
+  onFormulaUpdate?: (id: string, updates: Partial<FormulaElement>) => void;
+  onSubtitleUpdate?: (id: string, updates: Partial<SubtitleElement>) => void;
+  onElementSelect?: (id: string | null, type: "formula" | "subtitle" | null) => void;
 }
 
 // アニメーション計算ヘルパー
@@ -180,6 +187,11 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
   className = "",
   pixelRatio = window.devicePixelRatio || 2, // デフォルトで高解像度
   debug = import.meta.env.DEV, // 開発環境ではデフォルトでデバッグ有効
+  selectedElementId = null,
+  selectedElementType = null,
+  onFormulaUpdate,
+  onSubtitleUpdate,
+  onElementSelect,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [mathJaxLoaded, setMathJaxLoaded] = useState(false);
@@ -187,6 +199,28 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
     formulas: Array<{ element: FormulaElement; html: string; animationState: AnimationState }>;
     subtitles: Array<{ element: SubtitleElement; animationState: AnimationState }>;
   }>({ formulas: [], subtitles: [] });
+
+  // ドラッグ状態の管理
+  const [dragState, setDragState] = useState<{
+    elementId: string;
+    elementType: "formula" | "subtitle";
+    isDragging: boolean;
+    startX: number;
+    startY: number;
+    startPosition: { x: number; y: number };
+    offsetX: number; // 要素左上角からマウス位置へのオフセット
+    offsetY: number; // 要素左上角からマウス位置へのオフセット
+  } | null>(null);
+
+  // リサイズ状態の管理
+  const [resizeState, setResizeState] = useState<{
+    elementId: string;
+    elementType: "formula" | "subtitle";
+    isResizing: boolean;
+    startX: number;
+    startY: number;
+    startScale: number;
+  } | null>(null);
 
   // MathJax初期化（改良版）
   useEffect(() => {
@@ -365,37 +399,271 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
     updateElements();
   }, [formulas, subtitles, currentFrame, mathJaxLoaded, renderMathToHTML, debug]);
 
+  // 画面座標からグラフ座標への変換
+  const screenToGraph = useCallback(
+    (screenX: number, screenY: number) => {
+      if (!graphBounds) return { x: 0, y: 0 };
+
+      // 表示座標からエクスポート座標に変換
+      const exportX = (screenX - displayOffsetX) / displayScale;
+      const exportY = (screenY - displayOffsetY) / displayScale;
+
+      // エクスポート座標からグラフ座標に変換
+      const graphX =
+        graphBounds.left + (exportX / exportWidth) * (graphBounds.right - graphBounds.left);
+      const graphY =
+        graphBounds.top - (exportY / exportHeight) * (graphBounds.top - graphBounds.bottom);
+
+      return { x: graphX, y: graphY };
+    },
+    [graphBounds, displayScale, displayOffsetX, displayOffsetY, exportWidth, exportHeight]
+  );
+
+  // 画面座標から字幕の相対座標への変換
+  const screenToSubtitleRelative = useCallback(
+    (screenX: number, screenY: number) => {
+      // 表示座標からエクスポート座標に変換
+      const exportX = (screenX - displayOffsetX) / displayScale;
+      const exportY = (screenY - displayOffsetY) / displayScale;
+
+      // エクスポート座標から相対座標(0-1)に変換
+      const relativeX = exportX / exportWidth;
+      const relativeY = exportY / exportHeight;
+
+      return { x: relativeX, y: relativeY };
+    },
+    [displayScale, displayOffsetX, displayOffsetY, exportWidth, exportHeight]
+  );
+
+  // ドラッグ開始
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent, elementId: string, elementType: "formula" | "subtitle") => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const startX = e.clientX - rect.left;
+      const startY = e.clientY - rect.top;
+
+      // 要素を選択
+      onElementSelect?.(elementId, elementType);
+
+      // 現在の位置を取得
+      const element =
+        elementType === "formula"
+          ? formulas.find((f) => f.id === elementId)
+          : subtitles.find((s) => s.id === elementId);
+
+      if (!element) return;
+
+      // 要素の現在の画面座標を取得
+      let elementScreenX, elementScreenY;
+      if (elementType === "formula") {
+        if (!graphBounds) return;
+        const screenPos = graphToScreen(
+          element.position.x,
+          element.position.y,
+          graphBounds,
+          exportWidth,
+          exportHeight,
+          displayScale,
+          displayOffsetX,
+          displayOffsetY
+        );
+        elementScreenX = screenPos.x;
+        elementScreenY = screenPos.y;
+      } else {
+        // 字幕の場合
+        const exportScreenX = element.position.x * exportWidth;
+        const exportScreenY = element.position.y * exportHeight;
+        elementScreenX = exportScreenX * displayScale + displayOffsetX;
+        elementScreenY = exportScreenY * displayScale + displayOffsetY;
+      }
+
+      // マウス位置と要素位置の差分（オフセット）を計算
+      const offsetX = startX - elementScreenX;
+      const offsetY = startY - elementScreenY;
+
+      setDragState({
+        elementId,
+        elementType,
+        isDragging: false,
+        startX,
+        startY,
+        startPosition: { x: element.position.x, y: element.position.y },
+        offsetX,
+        offsetY,
+      });
+    },
+    [
+      onElementSelect,
+      formulas,
+      subtitles,
+      graphBounds,
+      exportWidth,
+      exportHeight,
+      displayScale,
+      displayOffsetX,
+      displayOffsetY,
+    ]
+  );
+
+  // リサイズ開始
+  const handleResizeMouseDown = useCallback(
+    (e: React.MouseEvent, elementId: string, elementType: "formula" | "subtitle") => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const startX = e.clientX - rect.left;
+      const startY = e.clientY - rect.top;
+
+      // 現在のスケールを取得
+      const element =
+        elementType === "formula"
+          ? formulas.find((f) => f.id === elementId)
+          : subtitles.find((s) => s.id === elementId);
+
+      if (!element) return;
+
+      const startScale =
+        elementType === "formula"
+          ? (element as FormulaElement).style.fontSize / 16 // 数式もフォントサイズベースに変更
+          : (element as SubtitleElement).style.fontSize / 16; // 基準フォントサイズを16pxとして正規化
+
+      setResizeState({
+        elementId,
+        elementType,
+        isResizing: false,
+        startX,
+        startY,
+        startScale,
+      });
+    },
+    [formulas, subtitles]
+  );
+
+  // マウス移動ハンドラー
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const currentX = e.clientX - rect.left;
+      const currentY = e.clientY - rect.top;
+
+      if (dragState) {
+        const deltaX = currentX - dragState.startX;
+        const deltaY = currentY - dragState.startY;
+
+        if (!dragState.isDragging && (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5)) {
+          setDragState((prev) => (prev ? { ...prev, isDragging: true } : null));
+        }
+
+        if (dragState.isDragging) {
+          if (dragState.elementType === "formula" && onFormulaUpdate) {
+            // オフセットを考慮して正しい位置を計算
+            const targetScreenX = currentX - dragState.offsetX;
+            const targetScreenY = currentY - dragState.offsetY;
+            const newGraphPos = screenToGraph(targetScreenX, targetScreenY);
+            onFormulaUpdate(dragState.elementId, {
+              position: newGraphPos,
+            });
+          } else if (dragState.elementType === "subtitle" && onSubtitleUpdate) {
+            // オフセットを考慮して正しい位置を計算
+            const targetScreenX = currentX - dragState.offsetX;
+            const targetScreenY = currentY - dragState.offsetY;
+            const newRelativePos = screenToSubtitleRelative(targetScreenX, targetScreenY);
+            onSubtitleUpdate(dragState.elementId, {
+              position: newRelativePos,
+            });
+          }
+        }
+      }
+
+      if (resizeState) {
+        const deltaY = currentY - resizeState.startY;
+
+        if (!resizeState.isResizing && Math.abs(deltaY) > 5) {
+          setResizeState((prev) => (prev ? { ...prev, isResizing: true } : null));
+        }
+
+        if (resizeState.isResizing) {
+          // Y方向の移動量に基づいてスケールを調整
+          const scaleFactor = 1 + deltaY / 100; // 100px移動で2倍
+          const newScale = Math.max(0.1, resizeState.startScale * scaleFactor);
+
+          if (resizeState.elementType === "formula" && onFormulaUpdate) {
+            const currentFormula = formulas.find((f) => f.id === resizeState.elementId);
+            if (currentFormula) {
+              const newFontSize = Math.max(8, newScale * 16); // 数式もフォントサイズで制御
+              onFormulaUpdate(resizeState.elementId, {
+                style: { ...currentFormula.style, fontSize: newFontSize },
+              });
+            }
+          } else if (resizeState.elementType === "subtitle" && onSubtitleUpdate) {
+            const currentSubtitle = subtitles.find((s) => s.id === resizeState.elementId);
+            if (currentSubtitle) {
+              const newFontSize = Math.max(8, newScale * 16); // 基準16pxから計算
+              onSubtitleUpdate(resizeState.elementId, {
+                style: { ...currentSubtitle.style, fontSize: newFontSize },
+              });
+            }
+          }
+        }
+      }
+    },
+    [
+      dragState,
+      resizeState,
+      screenToGraph,
+      screenToSubtitleRelative,
+      onFormulaUpdate,
+      onSubtitleUpdate,
+      formulas,
+      subtitles,
+    ]
+  );
+
+  // マウスアップハンドラー
+  const handleMouseUp = useCallback(() => {
+    setDragState(null);
+    setResizeState(null);
+  }, []);
+
+  // マウスイベントリスナーの管理
+  useEffect(() => {
+    if (dragState || resizeState) {
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+
+      return () => {
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+      };
+    }
+  }, [dragState, resizeState, handleMouseMove, handleMouseUp]);
+
   return (
     <div
       ref={containerRef}
-      className={`pointer-events-none absolute inset-0 ${className}`}
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        width: "100%",
-        height: "100%",
-        zIndex: 10,
-        overflow: "hidden",
-        border: debug ? "2px solid rgba(255, 0, 0, 0.5)" : "none", // デバッグ用：オーバーレイの境界を表示
+      className={`absolute inset-0 w-full h-full z-10 overflow-hidden pointer-events-auto ${className} ${
+        debug ? "border-2 border-red-500/50" : ""
+      }`}
+      onClick={(e) => {
+        // 背景クリックで選択解除
+        if (e.target === e.currentTarget) {
+          onElementSelect?.(null, null);
+        }
       }}
     >
       {/* デバッグ情報表示 */}
       {debug && (
-        <div
-          style={{
-            position: "absolute",
-            top: 10,
-            left: 10,
-            background: "rgba(0, 0, 0, 0.8)",
-            color: "white",
-            padding: "8px",
-            fontSize: "12px",
-            zIndex: 100,
-            pointerEvents: "auto",
-            borderRadius: "4px",
-          }}
-        >
+        <div className="absolute top-2 left-2 bg-black/80 text-white p-2 text-xs z-[100] pointer-events-auto rounded">
           Debug: F:{renderedElements.formulas.length} S:{renderedElements.subtitles.length} Frame:
           {currentFrame} MJ:{mathJaxLoaded ? "✓" : "✗"}
           <br />
@@ -447,8 +715,8 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
 
         // アニメーション効果の計算
         let opacity = element.style.opacity * animationState.progress;
-        let scale = element.style.scale;
         let translateX = 0;
+        let fontSize = element.style.fontSize; // フォントサイズベースに変更
         let transform = "";
 
         switch (element.animation?.type) {
@@ -459,38 +727,37 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
             opacity = element.style.opacity * animationState.progress;
             break;
           case "scale":
-            scale = element.style.scale * animationState.progress;
+            fontSize = element.style.fontSize * animationState.progress; // スケールアニメーションもフォントサイズで
             break;
           case "slide":
             translateX = (1 - animationState.progress) * -50;
             break;
         }
 
-        transform = `translate(${screenPos.x + translateX}px, ${screenPos.y}px) scale(${scale}) ${
+        transform = `translate(${screenPos.x + translateX}px, ${screenPos.y}px) ${
           element.style.rotation ? `rotate(${element.style.rotation}deg)` : ""
         }`;
+
+        const isSelected = selectedElementId === element.id && selectedElementType === "formula";
 
         return (
           <div
             key={`formula-${element.id}-${index}`}
-            className="formula-overlay-element"
+            className={`formula-overlay-element absolute left-0 top-0 flex items-center justify-center min-h-4 cursor-move pointer-events-auto z-20 transition-shadow duration-200 ${
+              debug ? "border border-red-500" : ""
+            }`}
             style={{
-              position: "absolute",
-              left: 0,
-              top: 0,
               transform,
               transformOrigin: "center center",
               opacity,
-              fontSize: `${element.style.fontSize * displayScale}px`,
+              fontSize: `${fontSize * displayScale}px`, // 計算されたfontSizeを使用
               color: element.style.color,
               backgroundColor: debug
                 ? element.style.backgroundColor || "rgba(255, 255, 0, 0.3)"
                 : element.style.backgroundColor || "transparent",
               padding: element.style.backgroundColor || debug ? "8px" : "0",
               borderRadius: element.style.backgroundColor || debug ? "4px" : "0",
-              pointerEvents: "none",
-              zIndex: 20,
-              border: debug ? "1px solid red" : "none", // デバッグ用ボーダー
+              boxShadow: isSelected ? "0 0 0 2px #007bff" : "none",
               // MathJaxのスタイルを確実に適用するためのCSS
               fontFamily: "inherit",
               lineHeight: "1.2",
@@ -499,12 +766,8 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
               WebkitFontSmoothing: "antialiased",
               fontSmooth: "always",
               textRendering: "optimizeLegibility",
-              // コンテナ内のSVGやMathJax要素を適切に表示
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              minHeight: "1em",
             }}
+            onMouseDown={(e) => handleMouseDown(e, element.id, "formula")}
           >
             <div
               style={{
@@ -515,6 +778,17 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
               }}
               dangerouslySetInnerHTML={{ __html: html }}
             />
+
+            {/* 選択時のコントロール */}
+            {isSelected && (
+              <>
+                {/* リサイズハンドル */}
+                <div
+                  className="absolute -bottom-2 -right-2 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-nw-resize z-30"
+                  onMouseDown={(e) => handleResizeMouseDown(e, element.id, "formula")}
+                />
+              </>
+            )}
           </div>
         );
       })}
@@ -562,14 +836,15 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
         }
 
         const transform = `translate(${screenX + translateX}px, ${screenY}px)`;
+        const isSelected = selectedElementId === element.id && selectedElementType === "subtitle";
 
         return (
           <div
             key={`subtitle-${element.id}-${index}`}
+            className={`absolute left-0 top-0 cursor-move pointer-events-auto z-20 whitespace-pre-wrap transition-shadow duration-200 ${
+              debug ? "border border-blue-500" : ""
+            }`}
             style={{
-              position: "absolute",
-              left: 0,
-              top: 0,
               transform,
               transformOrigin: "center center",
               opacity,
@@ -580,20 +855,29 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
                 : element.style.backgroundColor || "transparent",
               padding: element.style.backgroundColor || debug ? "12px" : "0",
               borderRadius: element.style.backgroundColor || debug ? "8px" : "0",
+              boxShadow: isSelected ? "0 0 0 2px #28a745" : "none",
               fontFamily: element.style.fontFamily || "Arial",
               fontWeight: element.style.fontWeight || "normal",
               textAlign: element.style.textAlign || "center",
-              pointerEvents: "none",
-              zIndex: 20,
-              whiteSpace: "pre-wrap",
-              border: debug ? "1px solid blue" : "none", // デバッグ用ボーダー
               // 高品質レンダリングのためのCSS
               WebkitFontSmoothing: "antialiased",
               fontSmooth: "always",
               textRendering: "optimizeLegibility",
             }}
+            onMouseDown={(e) => handleMouseDown(e, element.id, "subtitle")}
           >
             {displayText}
+
+            {/* 選択時のコントロール */}
+            {isSelected && (
+              <>
+                {/* リサイズハンドル */}
+                <div
+                  className="absolute -bottom-2 -right-2 w-4 h-4 bg-green-500 border-2 border-white rounded-full cursor-nw-resize z-30"
+                  onMouseDown={(e) => handleResizeMouseDown(e, element.id, "subtitle")}
+                />
+              </>
+            )}
           </div>
         );
       })}

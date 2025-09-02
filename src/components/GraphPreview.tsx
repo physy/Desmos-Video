@@ -16,6 +16,13 @@ interface GraphPreviewProps {
   // 数式・字幕データ
   formulas?: FormulaElement[];
   subtitles?: SubtitleElement[];
+  // 選択状態
+  selectedElementId?: string | null;
+  selectedElementType?: "formula" | "subtitle" | null;
+  // インタラクティブ操作用のコールバック
+  onElementSelect?: (id: string | null, type: "formula" | "subtitle" | null) => void;
+  onFormulaUpdate?: (id: string, updates: Partial<FormulaElement>) => void;
+  onSubtitleUpdate?: (id: string, updates: Partial<SubtitleElement>) => void;
 }
 
 const GraphPreview: React.FC<GraphPreviewProps> = ({
@@ -26,6 +33,11 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
   fps = 30,
   formulas = [],
   subtitles = [],
+  selectedElementId = null,
+  selectedElementType = null,
+  onElementSelect,
+  onFormulaUpdate,
+  onSubtitleUpdate,
 }) => {
   // frame→秒変換関数
   const frameToSeconds = (frame: number) => (fps ? frame / fps : frame / 30);
@@ -264,12 +276,7 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
           <img
             src={imageUrl}
             alt="Graph Preview"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "contain",
-              background: "#fff",
-            }}
+            className="w-full h-full object-contain bg-white touch-none no-drag"
           />
           {/* 数式・字幕オーバーレイ */}
           <OverlayRenderer
@@ -286,6 +293,11 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
             displayOffsetY={offsetY}
             className="absolute inset-0"
             debug={false}
+            selectedElementId={selectedElementId}
+            selectedElementType={selectedElementType}
+            onElementSelect={onElementSelect}
+            onFormulaUpdate={onFormulaUpdate}
+            onSubtitleUpdate={onSubtitleUpdate}
           />
         </>
       )}

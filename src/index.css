@@ -23,6 +23,12 @@ body {
   }
 }
 
+@utility no-drag {
+  user-drag: none;
+  -webkit-user-drag: none;
+  -moz-user-select: none;
+}
+
 /* Custom component styles */
 .slider {
   -webkit-appearance: none;
