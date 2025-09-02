@@ -1,11 +1,12 @@
-import { useRef, useCallback, useEffect, useState } from "react";
-import type { Calculator, DesmosState } from "../types/desmos";
+import { useRef, useCallback, useEffect, useState, useMemo } from "react";
+import type { Calculator, DesmosState, GraphingCalculatorOptions } from "../types/desmos";
 import type { UnifiedEvent, StateEvent } from "../types/timeline";
 import { StateManager, createStateManager } from "../utils/stateManager";
 
 interface UseStateManagerOptions {
   displayCalculator: Calculator | null;
   autoCreateComputeCalculator?: boolean;
+  calculatorOptions?: GraphingCalculatorOptions & { graphType?: "2d" | "3d" };
 }
 
 interface UseStateManagerReturn {
@@ -30,9 +31,11 @@ interface UseStateManagerReturn {
 export function useStateManager({
   displayCalculator,
   autoCreateComputeCalculator = true,
+  calculatorOptions,
 }: UseStateManagerOptions): UseStateManagerReturn {
   const stateManagerRef = useRef<StateManager | null>(null);
   const computeCalculatorRef = useRef<Calculator | null>(null);
+  const computeDivRef = useRef<HTMLDivElement | null>(null);
   const [desmosReady, setDesmosReady] = useState(false);
 
   // Desmosライブラリの準備状況をチェック
@@ -80,6 +83,15 @@ export function useStateManager({
     }
   }, []);
 
+  // 計算用calculatorの基本設定（変更しない）
+  const baseComputeOptions: GraphingCalculatorOptions = useMemo(() => ({
+    // expressions: false,
+    // graphpaper: false,
+    // zoomButtons: false,
+    // autosize: false,
+    showResetButtonOnGraphpaper: false,
+  }), []);
+
   // 計算用calculatorを作成・設定（Desmosライブラリが準備できてから）
   useEffect(() => {
     if (!desmosReady || !autoCreateComputeCalculator || computeCalculatorRef.current) {
@@ -94,19 +106,37 @@ export function useStateManager({
     computeDiv.style.width = "400px";
     computeDiv.style.height = "300px";
     document.body.appendChild(computeDiv);
+    computeDivRef.current = computeDiv;
 
     try {
-      const computeCalculator = window.Desmos.GraphingCalculator(computeDiv, {
-        // 計算専用なので最小限の設定
-        // expressions: false,
-        // graphpaper: false,
-        // zoomButtons: false,
-        // autosize: false,
-        // showResetButtonOnGraphpaper: false,
-      });
+      // calculatorOptionsから適用可能な設定を抽出（graphTypeは除く）
+      const { graphType, ...applicableOptions } = calculatorOptions || {};
+
+      // 基本設定を上書きしないように、calculatorOptionsの設定をマージ
+      const finalOptions = {
+        ...applicableOptions, // calculatorOptionsの設定を先に
+        ...baseComputeOptions, // 基本設定で上書き（重要な設定を保護）
+      };
+
+      // graphTypeに基づいて適切なコンストラクタを使用
+      const selectedGraphType = calculatorOptions?.graphType || "2d";
+      let computeCalculator: Calculator;
+
+      if (selectedGraphType === "3d") {
+        // Calculator3Dを使用
+        computeCalculator = window.Desmos.Calculator3D?.(computeDiv, finalOptions);
+        console.log("[useStateManager] Creating 3D compute calculator");
+      } else {
+        // GraphingCalculatorを使用（デフォルト）
+        computeCalculator = window.Desmos.GraphingCalculator(computeDiv, finalOptions);
+        console.log("[useStateManager] Creating 2D compute calculator");
+      }
 
       computeCalculatorRef.current = computeCalculator;
-      console.log("[useStateManager] Compute calculator created successfully");
+      console.log(
+        "[useStateManager] Compute calculator created successfully with options:",
+        finalOptions
+      );
 
       // StateManagerに設定
       if (stateManagerRef.current) {
@@ -121,12 +151,117 @@ export function useStateManager({
     return () => {
       // 計算用calculatorはdestroyしない
       // ただしdivはDOMから削除してOK
-      if (computeDiv.parentNode) {
-        computeDiv.parentNode.removeChild(computeDiv);
+      if (computeDivRef.current && computeDivRef.current.parentNode) {
+        computeDivRef.current.parentNode.removeChild(computeDivRef.current);
+        computeDivRef.current = null;
       }
       // computeCalculatorRef.currentは保持
     };
-  }, [desmosReady, autoCreateComputeCalculator]);
+  }, [desmosReady, autoCreateComputeCalculator, calculatorOptions, baseComputeOptions]);
+
+  // calculatorOptionsが変更された時にcomputeCalculatorを再作成
+  useEffect(() => {
+    if (!desmosReady || !autoCreateComputeCalculator || !computeCalculatorRef.current) {
+      return;
+    }
+
+    console.log("[useStateManager] Calculator options changed, recreating compute calculator...");
+
+    // 既存のcomputeCalculatorとDOMを完全に破棄
+    try {
+      if (computeCalculatorRef.current) {
+        console.log("[useStateManager] Destroying old compute calculator...");
+        computeCalculatorRef.current.destroy();
+        computeCalculatorRef.current = null;
+      }
+      
+      // 既存のdivも削除
+      if (computeDivRef.current && computeDivRef.current.parentNode) {
+        computeDivRef.current.parentNode.removeChild(computeDivRef.current);
+        computeDivRef.current = null;
+      }
+    } catch (error) {
+      console.error("[useStateManager] Error destroying old compute calculator:", error);
+    }
+
+    // 新しい非表示のdivを作成
+    const computeDiv = document.createElement("div");
+    computeDiv.style.display = "none";
+    computeDiv.style.width = "400px";
+    computeDiv.style.height = "300px";
+    document.body.appendChild(computeDiv);
+    computeDivRef.current = computeDiv;
+
+    try {
+      // calculatorOptionsから適用可能な設定を抽出（graphTypeは除く）
+      const { graphType, ...applicableOptions } = calculatorOptions || {};
+
+      // 基本設定を上書きしないように、calculatorOptionsの設定をマージ
+      const finalOptions = {
+        ...applicableOptions, // calculatorOptionsの設定を先に
+        ...baseComputeOptions, // 基本設定で上書き（重要な設定を保護）
+      };
+
+      // graphTypeに基づいて適切なコンストラクタを使用
+      const selectedGraphType = calculatorOptions?.graphType || "2d";
+      let computeCalculator: Calculator;
+
+      if (selectedGraphType === "3d") {
+        // Calculator3Dを使用
+        computeCalculator = window.Desmos.Calculator3D?.(computeDiv, finalOptions);
+        console.log("[useStateManager] Recreating 3D compute calculator");
+      } else {
+        // GraphingCalculatorを使用（デフォルト）
+        computeCalculator = window.Desmos.GraphingCalculator(computeDiv, finalOptions);
+        console.log("[useStateManager] Recreating 2D compute calculator");
+      }
+
+      computeCalculatorRef.current = computeCalculator;
+      console.log(
+        "[useStateManager] Compute calculator recreated successfully with new options:",
+        finalOptions
+      );
+
+      // StateManagerに設定
+      if (stateManagerRef.current) {
+        stateManagerRef.current.setComputeCalculator(computeCalculator);
+        console.log("[useStateManager] New compute calculator set to StateManager");
+      }
+    } catch (error) {
+      console.error("[useStateManager] Failed to recreate compute calculator:", error);
+    }
+
+    // クリーンアップ関数
+    return () => {
+      if (computeDivRef.current && computeDivRef.current.parentNode) {
+        computeDivRef.current.parentNode.removeChild(computeDivRef.current);
+        computeDivRef.current = null;
+      }
+    };
+  }, [calculatorOptions, desmosReady, autoCreateComputeCalculator, baseComputeOptions]);
+
+  // コンポーネントアンマウント時のクリーンアップ
+  useEffect(() => {
+    return () => {
+      console.log("[useStateManager] Component unmounting, cleaning up compute calculator...");
+      
+      // computeCalculatorを破棄
+      try {
+        if (computeCalculatorRef.current) {
+          computeCalculatorRef.current.destroy();
+          computeCalculatorRef.current = null;
+        }
+      } catch (error) {
+        console.error("[useStateManager] Error destroying compute calculator on unmount:", error);
+      }
+      
+      // divも削除
+      if (computeDivRef.current && computeDivRef.current.parentNode) {
+        computeDivRef.current.parentNode.removeChild(computeDivRef.current);
+        computeDivRef.current = null;
+      }
+    };
+  }, []);
 
   // 指定時刻の状態を表示用calculatorに適用
   const applyStateAtFrame = useCallback(

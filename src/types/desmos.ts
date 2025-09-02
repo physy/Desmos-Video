@@ -5,6 +5,7 @@ declare global {
   interface Window {
     Desmos: {
       GraphingCalculator: (elt: HTMLElement, options?: GraphingCalculatorOptions) => Calculator;
+      Calculator3D: (elt: HTMLElement, options?: GraphingCalculatorOptions) => Calculator;
     };
   }
 }

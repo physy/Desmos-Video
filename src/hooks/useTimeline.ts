@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useMemo } from "react";
-import type { Calculator } from "../types/desmos";
+import type { Calculator, GraphingCalculatorOptions } from "../types/desmos";
 import type {
   TimelineEvent,
   ContinuousEvent,
@@ -94,7 +94,10 @@ const convertTimelineEventToUnifiedEvent = (timelineEvent: TimelineEvent): Unifi
   }
 };
 
-export const useTimeline = (calculator: Calculator | null) => {
+export const useTimeline = (
+  calculator: Calculator | null,
+  calculatorOptions?: GraphingCalculatorOptions & { graphType?: "2d" | "3d" }
+) => {
   // isPlayingをrefでも管理
   const isPlayingRef = useRef(false);
   const [project, setProject] = useState<AnimationProject>({
@@ -126,6 +129,7 @@ export const useTimeline = (calculator: Calculator | null) => {
   } = useStateManager({
     displayCalculator: calculator,
     autoCreateComputeCalculator: true,
+    calculatorOptions,
   });
 
   // プロジェクトの変更時にStateManagerのイベントを同期
