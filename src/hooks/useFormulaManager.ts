@@ -60,6 +60,12 @@ export const useFormulaManager = ({
     }
   }, []);
 
+  // 要素の時間のみを更新（ドラッグ用）
+  const updateElementTime = useCallback((elementId: string, newFrame: number) => {
+    setFormulas((prev) => prev.map((f) => (f.id === elementId ? { ...f, frame: newFrame } : f)));
+    setSubtitles((prev) => prev.map((s) => (s.id === elementId ? { ...s, frame: newFrame } : s)));
+  }, []);
+
   // 要素を削除
   const deleteElement = useCallback((elementId: string) => {
     setFormulas((prev) => prev.filter((f) => f.id !== elementId));
@@ -181,6 +187,7 @@ export const useFormulaManager = ({
     addFormula,
     addSubtitle,
     updateElement,
+    updateElementTime,
     deleteElement,
     duplicateElement,
     clearAll,

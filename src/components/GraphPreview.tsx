@@ -97,18 +97,42 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
     return () => clearInterval(interval);
   }, [computeCalculator, stateManager, videoSettings]);
 
-  // コンテナサイズ監視
+  // コンテナサイズ監視（ResizeObserver使用）
   useEffect(() => {
     const updateSize = () => {
       if (containerRef.current) {
         const { width, height } = containerRef.current.getBoundingClientRect();
         setContainerSize({ width, height });
+        console.log("Container size updated:", { width, height });
       }
     };
 
-    updateSize();
+    let resizeObserver: ResizeObserver | null = null;
+
+    if (containerRef.current) {
+      updateSize();
+
+      // ResizeObserverでコンテナサイズの変更を監視
+      resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const { width, height } = entry.contentRect;
+          setContainerSize({ width, height });
+          console.log("ResizeObserver detected size change:", { width, height });
+        }
+      });
+
+      resizeObserver.observe(containerRef.current);
+    }
+
+    // フォールバック：windowリサイズイベント
     window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
+
+    return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+      window.removeEventListener("resize", updateSize);
+    };
   }, []);
 
   useEffect(() => {
@@ -195,6 +219,39 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
     };
   }, [computeCalculator, currentFrame, stateManager, videoSettings, fps]);
 
+  // エクスポート解像度とコンテナサイズの比率計算
+  const effectiveSettings = stateManager?.videoSettings ?? videoSettings;
+  const exportWidth = effectiveSettings?.resolution?.width ?? 1920;
+  const exportHeight = effectiveSettings?.resolution?.height ?? 1080;
+
+  // コンテナ内での実際の表示サイズを計算（object-fit: contain の効果）
+  const containerAspect = containerSize.width / containerSize.height;
+  const exportAspect = exportWidth / exportHeight;
+
+  let displayWidth, displayHeight;
+  if (containerAspect > exportAspect) {
+    // コンテナが横長の場合、高さに合わせる
+    displayHeight = containerSize.height;
+    displayWidth = displayHeight * exportAspect;
+  } else {
+    // コンテナが縦長の場合、幅に合わせる
+    displayWidth = containerSize.width;
+    displayHeight = displayWidth / exportAspect;
+  }
+
+  const scale = displayWidth / exportWidth;
+  const offsetX = (containerSize.width - displayWidth) / 2;
+  const offsetY = (containerSize.height - displayHeight) / 2;
+
+  // デバッグ用：スケール計算の情報をログ出力
+  console.log("GraphPreview scale calculation:", {
+    containerSize,
+    exportSize: { width: exportWidth, height: exportHeight },
+    displaySize: { width: displayWidth, height: displayHeight },
+    scale,
+    offset: { x: offsetX, y: offsetY },
+  });
+
   return (
     <div
       ref={containerRef}
@@ -222,27 +279,14 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
             graphBounds={graphBounds || { left: -10, right: 10, top: 10, bottom: -10 }}
             containerWidth={containerSize.width}
             containerHeight={containerSize.height}
+            exportWidth={exportWidth}
+            exportHeight={exportHeight}
+            displayScale={scale}
+            displayOffsetX={offsetX}
+            displayOffsetY={offsetY}
             className="absolute inset-0"
+            debug={false}
           />
-          {/* デバッグ情報 */}
-          <div
-            style={{
-              position: "absolute",
-              bottom: 10,
-              right: 10,
-              background: "rgba(0, 0, 0, 0.7)",
-              color: "white",
-              padding: "4px 8px",
-              fontSize: "11px",
-              borderRadius: "4px",
-              zIndex: 1000,
-            }}
-          >
-            Bounds:{" "}
-            {graphBounds
-              ? `${graphBounds.left},${graphBounds.right},${graphBounds.top},${graphBounds.bottom}`
-              : "null"}
-          </div>
         </>
       )}
     </div>

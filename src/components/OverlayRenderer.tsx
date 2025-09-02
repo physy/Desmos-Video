@@ -60,8 +60,15 @@ interface OverlayRendererProps {
   };
   containerWidth: number;
   containerHeight: number;
+  // エクスポート解像度とスケール情報
+  exportWidth?: number;
+  exportHeight?: number;
+  displayScale?: number;
+  displayOffsetX?: number;
+  displayOffsetY?: number;
   className?: string;
   pixelRatio?: number; // 高解像度対応
+  debug?: boolean; // デバッグモードの制御
 }
 
 // アニメーション計算ヘルパー
@@ -128,19 +135,28 @@ const calculateAnimationProgress = (
   };
 };
 
-// 座標変換：グラフ座標 → 画面座標
+// 座標変換：グラフ座標 → 画面座標（エクスポート解像度基準）
 const graphToScreen = (
   graphX: number,
   graphY: number,
   graphBounds: { left: number; right: number; top: number; bottom: number },
-  containerWidth: number,
-  containerHeight: number
+  exportWidth: number,
+  exportHeight: number,
+  displayScale: number,
+  displayOffsetX: number,
+  displayOffsetY: number
 ) => {
-  const screenX =
-    ((graphX - graphBounds.left) / (graphBounds.right - graphBounds.left)) * containerWidth;
-  const screenY =
-    ((graphBounds.top - graphY) / (graphBounds.top - graphBounds.bottom)) * containerHeight;
-  return { x: screenX, y: screenY };
+  // エクスポート解像度での座標を計算
+  const exportScreenX =
+    ((graphX - graphBounds.left) / (graphBounds.right - graphBounds.left)) * exportWidth;
+  const exportScreenY =
+    ((graphBounds.top - graphY) / (graphBounds.top - graphBounds.bottom)) * exportHeight;
+
+  // 実際の表示サイズにスケール＆オフセット適用
+  const displayX = exportScreenX * displayScale + displayOffsetX;
+  const displayY = exportScreenY * displayScale + displayOffsetY;
+
+  return { x: displayX, y: displayY };
 };
 
 // タイプライターアニメーション用のテキスト分割
@@ -156,8 +172,14 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
   graphBounds,
   containerWidth,
   containerHeight,
+  exportWidth = 1920,
+  exportHeight = 1080,
+  displayScale = 1,
+  displayOffsetX = 0,
+  displayOffsetY = 0,
   className = "",
   pixelRatio = window.devicePixelRatio || 2, // デフォルトで高解像度
+  debug = import.meta.env.DEV, // 開発環境ではデフォルトでデバッグ有効
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [mathJaxLoaded, setMathJaxLoaded] = useState(false);
@@ -170,7 +192,9 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
   useEffect(() => {
     const initMathJax = () => {
       if (typeof window !== "undefined" && !window.MathJax) {
-        console.log("Initializing MathJax...");
+        if (debug) {
+          console.log("Initializing MathJax...");
+        }
 
         // MathJaxの設定
         window.MathJax = {
@@ -185,10 +209,14 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
         mathJaxScript.async = true;
         mathJaxScript.defer = true;
         mathJaxScript.onload = () => {
-          console.log("MathJax script loaded");
+          if (debug) {
+            console.log("MathJax script loaded");
+          }
           setTimeout(() => {
             setMathJaxLoaded(true);
-            console.log("MathJax loaded state set to true");
+            if (debug) {
+              console.log("MathJax loaded state set to true");
+            }
           }, 200); // タイムアウトを少し延長
         };
         mathJaxScript.onerror = (error) => {
@@ -196,52 +224,37 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
         };
         document.head.appendChild(mathJaxScript);
       } else if (window.MathJax) {
-        console.log("MathJax already exists, setting loaded state");
+        if (debug) {
+          console.log("MathJax already exists, setting loaded state");
+        }
         setMathJaxLoaded(true);
       }
     };
 
     initMathJax();
-  }, []);
+  }, [debug]);
 
   // 数式をHTMLに変換
   const renderMathToHTML = useCallback(
     async (latex: string): Promise<string> => {
       if (!window.MathJax || !mathJaxLoaded) {
-        console.log("MathJax not ready, returning fallback for:", latex);
+        if (debug) {
+          console.log("MathJax not ready, returning fallback for:", latex);
+        }
         return `<span style="color: red;">${latex}</span>`; // デバッグ用に赤色で表示
       }
 
       try {
-        console.log("Rendering LaTeX:", latex);
+        if (debug) {
+          console.log("Rendering LaTeX:", latex);
+        }
 
         // LaTeX構文の前処理（適切な数学モードで囲む）
         const processedLatex = latex.trim();
 
-        // // 数学モードで囲まれていない場合は自動で囲む
-        // if (
-        //   !processedLatex.startsWith("$") &&
-        //   !processedLatex.startsWith("\\[") &&
-        //   !processedLatex.startsWith("\\(")
-        // ) {
-        //   // displayMathとして処理
-        //   processedLatex = `\\[${processedLatex}\\]`;
-        // }
-
-        console.log("Processed LaTeX:", processedLatex);
-
-        // // MathJax v4の新しいAPI
-        // if (window.MathJax.document?.convert) {
-        //   const node = window.MathJax.document.convert(processedLatex, {
-        //     display: true,
-        //     format: "TeX",
-        //     output: "CHTML",
-        //   });
-        //   if (node) {
-        //     console.log("Successfully rendered with MathJax v4 document.convert");
-        //     return node.outerHTML;
-        //   }
-        // }
+        if (debug) {
+          console.log("Processed LaTeX:", processedLatex);
+        }
 
         // フォールバック: tex2chtml (同期版)
         if (window.MathJax.tex2chtml) {
@@ -251,7 +264,9 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
             ex: 8,
           });
           if (node) {
-            console.log("Successfully rendered with tex2chtml");
+            if (debug) {
+              console.log("Successfully rendered with tex2chtml");
+            }
             return node.outerHTML;
           }
         }
@@ -267,7 +282,9 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
           });
 
           if (node) {
-            console.log("Successfully rendered with tex2chtmlPromise");
+            if (debug) {
+              console.log("Successfully rendered with tex2chtmlPromise");
+            }
             return node.outerHTML;
           }
         }
@@ -276,40 +293,52 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
         if (window.MathJax.tex2svg) {
           const svgNode = window.MathJax.tex2svg(latex, { display: true });
           if (svgNode) {
-            console.log("Successfully rendered with tex2svg");
+            if (debug) {
+              console.log("Successfully rendered with tex2svg");
+            }
             return svgNode.outerHTML;
           }
         }
 
-        console.warn("No MathJax rendering method available");
+        if (debug) {
+          console.warn("No MathJax rendering method available");
+        }
         return `<span style="color: orange;">${latex}</span>`;
       } catch (error) {
         console.error("MathJax rendering failed:", error);
         return `<span style="color: red;">Error: ${latex}</span>`;
       }
     },
-    [mathJaxLoaded]
+    [mathJaxLoaded, debug]
   );
 
   // 要素の更新処理
   useEffect(() => {
-    console.log("Update elements effect triggered:", {
-      formulasCount: formulas.length,
-      subtitlesCount: subtitles.length,
-      currentFrame,
-      mathJaxLoaded,
-    });
+    if (debug) {
+      console.log("Update elements effect triggered:", {
+        formulasCount: formulas.length,
+        subtitlesCount: subtitles.length,
+        currentFrame,
+        mathJaxLoaded,
+      });
+    }
 
     const updateElements = async () => {
-      console.log("Starting element update...");
+      if (debug) {
+        console.log("Starting element update...");
+      }
 
       const newFormulas = await Promise.all(
         formulas.map(async (formula, index) => {
           const animationState = calculateAnimationProgress(formula, currentFrame);
-          console.log(`Formula ${index} animation state:`, animationState);
+          if (debug) {
+            console.log(`Formula ${index} animation state:`, animationState);
+          }
 
           const html = await renderMathToHTML(formula.content);
-          console.log(`Formula ${index} rendered HTML:`, html.substring(0, 100) + "...");
+          if (debug) {
+            console.log(`Formula ${index} rendered HTML:`, html.substring(0, 100) + "...");
+          }
 
           return { element: formula, html, animationState };
         })
@@ -317,20 +346,24 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
 
       const newSubtitles = subtitles.map((subtitle, index) => {
         const animationState = calculateAnimationProgress(subtitle, currentFrame);
-        console.log(`Subtitle ${index} animation state:`, animationState);
+        if (debug) {
+          console.log(`Subtitle ${index} animation state:`, animationState);
+        }
         return { element: subtitle, animationState };
       });
 
-      console.log("Setting rendered elements:", {
-        formulasCount: newFormulas.length,
-        subtitlesCount: newSubtitles.length,
-      });
+      if (debug) {
+        console.log("Setting rendered elements:", {
+          formulasCount: newFormulas.length,
+          subtitlesCount: newSubtitles.length,
+        });
+      }
 
       setRenderedElements({ formulas: newFormulas, subtitles: newSubtitles });
     };
 
     updateElements();
-  }, [formulas, subtitles, currentFrame, mathJaxLoaded, renderMathToHTML]);
+  }, [formulas, subtitles, currentFrame, mathJaxLoaded, renderMathToHTML, debug]);
 
   return (
     <div
@@ -344,43 +377,56 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
         height: "100%",
         zIndex: 10,
         overflow: "hidden",
-        border: "2px solid rgba(255, 0, 0, 0.5)", // デバッグ用：オーバーレイの境界を表示
+        border: debug ? "2px solid rgba(255, 0, 0, 0.5)" : "none", // デバッグ用：オーバーレイの境界を表示
       }}
     >
       {/* デバッグ情報表示 */}
-      <div
-        style={{
-          position: "absolute",
-          top: 10,
-          left: 10,
-          background: "rgba(0, 0, 0, 0.8)",
-          color: "white",
-          padding: "8px",
-          fontSize: "12px",
-          zIndex: 100,
-          pointerEvents: "auto",
-        }}
-      >
-        Debug: F:{renderedElements.formulas.length} S:{renderedElements.subtitles.length} Frame:
-        {currentFrame} MJ:{mathJaxLoaded ? "✓" : "✗"}
-      </div>
+      {debug && (
+        <div
+          style={{
+            position: "absolute",
+            top: 10,
+            left: 10,
+            background: "rgba(0, 0, 0, 0.8)",
+            color: "white",
+            padding: "8px",
+            fontSize: "12px",
+            zIndex: 100,
+            pointerEvents: "auto",
+            borderRadius: "4px",
+          }}
+        >
+          Debug: F:{renderedElements.formulas.length} S:{renderedElements.subtitles.length} Frame:
+          {currentFrame} MJ:{mathJaxLoaded ? "✓" : "✗"}
+          <br />
+          Export: {exportWidth}x{exportHeight} Scale: {displayScale.toFixed(3)}
+          <br />
+          Container: {containerWidth}x{containerHeight}
+        </div>
+      )}
 
       {/* 数式レンダリング */}
       {renderedElements.formulas.map(({ element, html, animationState }, index) => {
-        console.log(`Rendering formula ${index}:`, {
-          visible: animationState.visible,
-          graphBounds: !!graphBounds,
-          element: element.id,
-          progress: animationState.progress,
-        });
+        if (debug) {
+          console.log(`Rendering formula ${index}:`, {
+            visible: animationState.visible,
+            graphBounds: !!graphBounds,
+            element: element.id,
+            progress: animationState.progress,
+          });
+        }
 
         if (!animationState.visible) {
-          console.log(`Formula ${index} not visible (animationState.visible = false)`);
+          if (debug) {
+            console.log(`Formula ${index} not visible (animationState.visible = false)`);
+          }
           return null;
         }
 
         if (!graphBounds) {
-          console.log(`Formula ${index} not rendered (no graphBounds)`);
+          if (debug) {
+            console.log(`Formula ${index} not rendered (no graphBounds)`);
+          }
           return null;
         }
 
@@ -388,11 +434,16 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
           element.position.x,
           element.position.y,
           graphBounds,
-          containerWidth,
-          containerHeight
+          exportWidth,
+          exportHeight,
+          displayScale,
+          displayOffsetX,
+          displayOffsetY
         );
 
-        console.log(`Formula ${index} screen position:`, screenPos);
+        if (debug) {
+          console.log(`Formula ${index} screen position:`, screenPos);
+        }
 
         // アニメーション効果の計算
         let opacity = element.style.opacity * animationState.progress;
@@ -430,14 +481,16 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
               transform,
               transformOrigin: "center center",
               opacity,
-              fontSize: `${element.style.fontSize * pixelRatio}px`,
+              fontSize: `${element.style.fontSize * displayScale}px`,
               color: element.style.color,
-              backgroundColor: element.style.backgroundColor || "rgba(255, 255, 0, 0.3)", // デバッグ用背景色
-              padding: "8px",
-              borderRadius: "4px",
+              backgroundColor: debug
+                ? element.style.backgroundColor || "rgba(255, 255, 0, 0.3)"
+                : element.style.backgroundColor || "transparent",
+              padding: element.style.backgroundColor || debug ? "8px" : "0",
+              borderRadius: element.style.backgroundColor || debug ? "4px" : "0",
               pointerEvents: "none",
               zIndex: 20,
-              border: "1px solid red", // デバッグ用ボーダー
+              border: debug ? "1px solid red" : "none", // デバッグ用ボーダー
               // MathJaxのスタイルを確実に適用するためのCSS
               fontFamily: "inherit",
               lineHeight: "1.2",
@@ -468,19 +521,28 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
 
       {/* 字幕レンダリング */}
       {renderedElements.subtitles.map(({ element, animationState }, index) => {
-        console.log(`Rendering subtitle ${index}:`, {
-          visible: animationState.visible,
-          element: element.id,
-          progress: animationState.progress,
-        });
+        if (debug) {
+          console.log(`Rendering subtitle ${index}:`, {
+            visible: animationState.visible,
+            element: element.id,
+            progress: animationState.progress,
+          });
+        }
 
         if (!animationState.visible) {
-          console.log(`Subtitle ${index} not visible`);
+          if (debug) {
+            console.log(`Subtitle ${index} not visible`);
+          }
           return null;
         }
 
-        const screenX = element.position.x * containerWidth;
-        const screenY = element.position.y * containerHeight;
+        // 字幕の座標計算（エクスポート解像度基準）
+        const exportScreenX = element.position.x * exportWidth;
+        const exportScreenY = element.position.y * exportHeight;
+
+        // 実際の表示サイズにスケール＆オフセット適用
+        const screenX = exportScreenX * displayScale + displayOffsetX;
+        const screenY = exportScreenY * displayScale + displayOffsetY;
 
         let displayText = element.text;
         let opacity = element.style.opacity * animationState.progress;
@@ -511,18 +573,20 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
               transform,
               transformOrigin: "center center",
               opacity,
-              fontSize: `${element.style.fontSize * pixelRatio}px`,
+              fontSize: `${element.style.fontSize * displayScale}px`,
               color: element.style.color,
-              backgroundColor: element.style.backgroundColor || "rgba(0, 255, 255, 0.3)", // デバッグ用背景色
-              padding: "12px",
-              borderRadius: "8px",
+              backgroundColor: debug
+                ? element.style.backgroundColor || "rgba(0, 255, 255, 0.3)"
+                : element.style.backgroundColor || "transparent",
+              padding: element.style.backgroundColor || debug ? "12px" : "0",
+              borderRadius: element.style.backgroundColor || debug ? "8px" : "0",
               fontFamily: element.style.fontFamily || "Arial",
               fontWeight: element.style.fontWeight || "normal",
               textAlign: element.style.textAlign || "center",
               pointerEvents: "none",
               zIndex: 20,
               whiteSpace: "pre-wrap",
-              border: "1px solid blue", // デバッグ用ボーダー
+              border: debug ? "1px solid blue" : "none", // デバッグ用ボーダー
               // 高品質レンダリングのためのCSS
               WebkitFontSmoothing: "antialiased",
               fontSmooth: "always",

@@ -98,44 +98,45 @@ function App() {
     setSelectedEventId,
   } = useTimeline(calculator, calculatorOptions);
 
-  // 数式・字幕管理
+  // 数式・字幕管理（プロジェクトから独立）
   const {
     formulas,
     subtitles,
     addFormula,
     addSubtitle,
     updateElement,
+    updateElementTime,
     deleteElement,
     duplicateElement: duplicateFormulaElement,
     clearAll: clearAllFormulas,
     exportData: exportFormulaData,
     importData: importFormulaData,
   } = useFormulaManager({
-    initialFormulas: project.formulas || [],
-    initialSubtitles: project.subtitles || [],
+    initialFormulas: [],
+    initialSubtitles: [],
   });
 
-  // プロジェクトデータが変更された時にフォーミュラマネージャーを同期
+  // プロジェクト読み込み時のみ数式・字幕データを同期
+  const [lastLoadedProjectId, setLastLoadedProjectId] = useState<string | null>(null);
   useEffect(() => {
-    if (project.formulas || project.subtitles) {
+    const currentProjectId = JSON.stringify({
+      formulas: project.formulas,
+      subtitles: project.subtitles,
+    });
+
+    if (lastLoadedProjectId !== currentProjectId && (project.formulas || project.subtitles)) {
       importFormulaData({
         formulas: project.formulas || [],
         subtitles: project.subtitles || [],
       });
+      setLastLoadedProjectId(currentProjectId);
     }
-  }, [project.formulas, project.subtitles, importFormulaData]);
+  }, [project.formulas, project.subtitles, importFormulaData, lastLoadedProjectId]);
 
   // 数式・字幕の選択状態
   const [selectedFormulaElementId, setSelectedFormulaElementId] = useState<string | null>(null);
 
-  // 数式・字幕データの変更をプロジェクトに反映
-  useEffect(() => {
-    setProject((prev) => ({
-      ...prev,
-      formulas,
-      subtitles,
-    }));
-  }, [formulas, subtitles, setProject]);
+  // 数式・字幕データの変更をプロジェクトに反映しない（保存時のみ同期）
 
   // ...existing code...
 
@@ -197,14 +198,6 @@ function App() {
             setVideoSettings(json.videoExportSettings);
           }
 
-          // 数式・字幕データも復元
-          if (json.formulas || json.subtitles) {
-            importFormulaData({
-              formulas: json.formulas || [],
-              subtitles: json.subtitles || [],
-            });
-          }
-
           // calculatorOptionsも復元
           if (json.calculatorOptions) {
             const oldGraphType = calculatorOptions.graphType;
@@ -224,14 +217,7 @@ function App() {
             setCalculatorOptions(defaultOptions);
           }
 
-          // 数式・字幕データの復元
-          if (json.formulas && json.subtitles) {
-            importFormulaData({
-              formulas: json.formulas,
-              subtitles: json.subtitles,
-            });
-          }
-
+          // プロジェクトデータを設定（数式・字幕データは自動同期される）
           setProject(json);
         } catch (err) {
           alert("読み込みに失敗しました: " + err);
@@ -247,7 +233,6 @@ function App() {
     setVideoSettings,
     calculatorOptions.graphType,
     handleGraphTypeChange,
-    importFormulaData,
   ]);
 
   const fileMenuItems = [
@@ -927,6 +912,31 @@ function App() {
                   } else {
                     setSelectedFormulaElementId(null);
                   }
+                }}
+                // 数式・字幕のドラッグ・削除機能
+                onFormulaTimeChange={(formulaId, newTime) => {
+                  updateElementTime(formulaId, newTime);
+                }}
+                onSubtitleTimeChange={(subtitleId, newTime) => {
+                  updateElementTime(subtitleId, newTime);
+                }}
+                onFormulaDelete={(formulaId) => {
+                  if (selectedFormulaElementId === formulaId) {
+                    setSelectedFormulaElementId(null);
+                  }
+                  deleteElement(formulaId);
+                }}
+                onSubtitleDelete={(subtitleId) => {
+                  if (selectedFormulaElementId === subtitleId) {
+                    setSelectedFormulaElementId(null);
+                  }
+                  deleteElement(subtitleId);
+                }}
+                onFormulaDuplicate={(formula) => {
+                  duplicateFormulaElement(formula.id);
+                }}
+                onSubtitleDuplicate={(subtitle) => {
+                  duplicateFormulaElement(subtitle.id);
                 }}
               />
             </div>

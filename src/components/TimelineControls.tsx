@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 // 選択矩形の型
 type SelectionRect = {
   x: number;
@@ -16,7 +16,6 @@ type TimelineItem = TimelineEvent | StateEvent | ExpressionEvent;
 interface FormulaTimelineItem {
   id: string;
   frame: number;
-  action: "showFormula";
   args: { formula: FormulaElement };
   type: "formula";
 }
@@ -24,7 +23,6 @@ interface FormulaTimelineItem {
 interface SubtitleTimelineItem {
   id: string;
   frame: number;
-  action: "showSubtitle";
   args: { subtitle: SubtitleElement };
   type: "subtitle";
 }
@@ -63,6 +61,13 @@ interface TimelineControlsProps {
   subtitles?: SubtitleElement[];
   onFormulaSelect?: (formula: FormulaElement | null) => void;
   onSubtitleSelect?: (subtitle: SubtitleElement | null) => void;
+  // 数式・字幕の更新・削除ハンドラー
+  onFormulaTimeChange?: (formulaId: string, newTime: number) => void;
+  onSubtitleTimeChange?: (subtitleId: string, newTime: number) => void;
+  onFormulaDelete?: (formulaId: string) => void;
+  onSubtitleDelete?: (subtitleId: string) => void;
+  onFormulaDuplicate?: (formula: FormulaElement) => void;
+  onSubtitleDuplicate?: (subtitle: SubtitleElement) => void;
 }
 
 export const TimelineControls: React.FC<TimelineControlsProps> = ({
@@ -90,6 +95,13 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   // selectedEventId,
   onStateSelect,
   setActiveTab,
+  // 数式・字幕のドラッグ・削除機能
+  onFormulaTimeChange,
+  onSubtitleTimeChange,
+  onFormulaDelete,
+  onSubtitleDelete,
+  onFormulaDuplicate,
+  onSubtitleDuplicate,
 }) => {
   // 複数選択管理
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -173,9 +185,32 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
       if (ae && /input|textarea/i.test(ae.tagName)) return;
       if (e.key === "Backspace" && selectedIds.length > 0) {
         selectedIds.forEach((id) => {
-          onEventDelete(id);
-          if (onStateTimeChange) {
+          // TimelineEvent削除
+          const timelineEvent = timeline.find((ev) => ev.id === id);
+          if (timelineEvent) {
+            onEventDelete(id);
+            return;
+          }
+
+          // StateEvent削除
+          const stateEvent = stateEvents.find((st) => st.id === id);
+          if (stateEvent && onStateTimeChange) {
             onStateTimeChange(id, -1); // -1で削除扱い（要onStateTimeChange側でfilter）
+            return;
+          }
+
+          // 数式削除
+          const formula = formulas.find((f) => f.id === id);
+          if (formula && onFormulaDelete) {
+            onFormulaDelete(id);
+            return;
+          }
+
+          // 字幕削除
+          const subtitle = subtitles.find((s) => s.id === id);
+          if (subtitle && onSubtitleDelete) {
+            onSubtitleDelete(id);
+            return;
           }
         });
         setSelectedIds([]);
@@ -183,22 +218,36 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, onEventDelete, onStateTimeChange]);
+  }, [
+    selectedIds,
+    onEventDelete,
+    onStateTimeChange,
+    onFormulaDelete,
+    onSubtitleDelete,
+    timeline,
+    stateEvents,
+    formulas,
+    subtitles,
+  ]);
   const [showInsertMenu, setShowInsertMenu] = useState(false);
   const [insertTime] = useState(0);
   const [dragState, setDragState] = useState<{
     eventId?: string;
     stateId?: string;
+    formulaId?: string;
+    subtitleId?: string;
     startX: number;
     startTime: number;
     isDragging: boolean;
-    type: "event" | "state";
+    type: "event" | "state" | "formula" | "subtitle";
   } | null>(null);
   // 右クリックメニュー
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
-    event: TimelineEvent | null;
+    event?: TimelineEvent | null;
+    formula?: FormulaElement | null;
+    subtitle?: SubtitleElement | null;
   } | null>(null);
   // ズーム倍率（1=100%、2=200%...）
   const [zoom, setZoom] = useState(1);
@@ -208,6 +257,8 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     startX: number;
     eventStartTimes: { [id: string]: number };
     stateStartTimes: { [id: string]: number };
+    formulaStartTimes: { [id: string]: number };
+    subtitleStartTimes: { [id: string]: number };
     isDragging: boolean;
   } | null>(null);
 
@@ -233,6 +284,24 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
             .map((id) => {
               // StateEvent
               const target = stateEvents.find((ev) => ev.id === id);
+              return [id, target ? target.frame : undefined];
+            })
+            .filter(([_, t]) => t !== undefined)
+        ),
+        formulaStartTimes: Object.fromEntries(
+          selectedIds
+            .map((id) => {
+              // FormulaElement
+              const target = formulas.find((f) => f.id === id);
+              return [id, target ? target.frame : undefined];
+            })
+            .filter(([_, t]) => t !== undefined)
+        ),
+        subtitleStartTimes: Object.fromEntries(
+          selectedIds
+            .map((id) => {
+              // SubtitleElement
+              const target = subtitles.find((s) => s.id === id);
               return [id, target ? target.frame : undefined];
             })
             .filter(([_, t]) => t !== undefined)
@@ -265,6 +334,26 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
           startTime: item.frame,
           isDragging: false,
           type: "event", // 必要に応じてtype追加
+        });
+      } else if ("type" in item && (item as FormulaTimelineItem).type === "formula") {
+        // FormulaElement用のドラッグ
+        const formulaItem = item as FormulaTimelineItem;
+        setDragState({
+          formulaId: formulaItem.id,
+          startX: e.clientX,
+          startTime: formulaItem.frame,
+          isDragging: false,
+          type: "formula",
+        });
+      } else if ("type" in item && (item as SubtitleTimelineItem).type === "subtitle") {
+        // SubtitleElement用のドラッグ
+        const subtitleItem = item as SubtitleTimelineItem;
+        setDragState({
+          subtitleId: subtitleItem.id,
+          startX: e.clientX,
+          startTime: subtitleItem.frame,
+          isDragging: false,
+          type: "subtitle",
         });
       }
     }
@@ -305,6 +394,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   const handleMouseMove = React.useCallback(
     (e: MouseEvent) => {
       if (!dragState) return;
+
       const deltaX = e.clientX - dragState.startX;
       const timelineElement = document.querySelector(".timeline-container");
       if (!timelineElement) return;
@@ -322,9 +412,24 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
         if (dragState.type === "state" && dragState.stateId && onStateTimeChange) {
           onStateTimeChange(dragState.stateId, newFrame);
         }
+        if (dragState.type === "formula" && dragState.formulaId && onFormulaTimeChange) {
+          onFormulaTimeChange(dragState.formulaId, newFrame);
+        }
+        if (dragState.type === "subtitle" && dragState.subtitleId && onSubtitleTimeChange) {
+          onSubtitleTimeChange(dragState.subtitleId, newFrame);
+        }
       }
     },
-    [dragState, duration, onEventTimeChange, onStateTimeChange, zoom, snapFrame]
+    [
+      dragState,
+      duration,
+      onEventTimeChange,
+      onStateTimeChange,
+      onFormulaTimeChange,
+      onSubtitleTimeChange,
+      zoom,
+      snapFrame,
+    ]
   );
 
   const handleMouseUp = React.useCallback(() => {
@@ -364,6 +469,16 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
           const newFrame = snapFrame(Math.max(0, Math.min(duration, startTime + deltaFrame)));
           if (onStateTimeChange) onStateTimeChange(id, newFrame);
         });
+        // 数式
+        Object.entries(multiDragState.formulaStartTimes).forEach(([id, startTime]) => {
+          const newFrame = snapFrame(Math.max(0, Math.min(duration, startTime + deltaFrame)));
+          if (onFormulaTimeChange) onFormulaTimeChange(id, newFrame);
+        });
+        // 字幕
+        Object.entries(multiDragState.subtitleStartTimes).forEach(([id, startTime]) => {
+          const newFrame = snapFrame(Math.max(0, Math.min(duration, startTime + deltaFrame)));
+          if (onSubtitleTimeChange) onSubtitleTimeChange(id, newFrame);
+        });
       }
     };
     const handleUp = () => {
@@ -375,7 +490,16 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
       document.removeEventListener("mousemove", handleMove);
       document.removeEventListener("mouseup", handleUp);
     };
-  }, [multiDragState, duration, zoom, onEventTimeChange, onStateTimeChange, snapFrame]);
+  }, [
+    multiDragState,
+    duration,
+    zoom,
+    onEventTimeChange,
+    onStateTimeChange,
+    onFormulaTimeChange,
+    onSubtitleTimeChange,
+    snapFrame,
+  ]);
   const getEventDuration = (event: TimelineEvent): number => {
     if (event.action === "startAnimation") {
       // animation eventはdurationFramesで管理
@@ -430,13 +554,13 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   const getEventColor = (action: string): string => {
     switch (action) {
       case "setExpression":
-        return "#f59e0b"; // orange
+        return "#fbbf24"; // yellow-400（凡例に合わせる）
       case "setMathBounds":
-        return "#84cc16"; // lime
+        return "#fbbf24"; // yellow-400（凡例に合わせる）
       case "startAnimation":
-        return "#8b5cf6"; // purple
+        return "#fbbf24"; // yellow-400（凡例に合わせる）
       case "endAnimation":
-        return "#6366f1"; // indigo
+        return "#fbbf24"; // yellow-400（凡例に合わせる）
       default:
         return "#6b7280"; // gray
     }
@@ -543,7 +667,6 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     const formulaItems: FormulaTimelineItem[] = formulas.map((formula) => ({
       id: formula.id,
       frame: formula.frame,
-      action: "showFormula",
       args: { formula },
       type: "formula",
     }));
@@ -551,7 +674,6 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     const subtitleItems: SubtitleTimelineItem[] = subtitles.map((subtitle) => ({
       id: subtitle.id,
       frame: subtitle.frame,
-      action: "showSubtitle",
       args: { subtitle },
       type: "subtitle",
     }));
@@ -777,7 +899,11 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
               {allMarkersWithTrack.markers.map((item, index) => {
                 const isSelected = item.id ? selectedIds.includes(item.id) : false;
                 const dragEvent =
-                  dragState && dragState.eventId === item.id && dragState.isDragging;
+                  dragState &&
+                  ((dragState.eventId === item.id && dragState.isDragging) ||
+                    (dragState.stateId === item.id && dragState.isDragging) ||
+                    (dragState.formulaId === item.id && dragState.isDragging) ||
+                    (dragState.subtitleId === item.id && dragState.isDragging));
                 // left/width計算
                 let left = 0;
                 let width = 1;
@@ -785,6 +911,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 let border = isSelected ? "2px solid #3b82f6" : "2px solid rgba(255,255,255,0.3)";
                 let height = "24px";
                 let top = 3;
+                console.log(item);
                 if ("action" in item) {
                   left = (item.frame / duration) * 100;
                   if (item.action === "startAnimation") {
@@ -795,14 +922,14 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   color = getEventColor(item.action);
                 } else if ("state" in item) {
                   left = (item.frame / duration) * 100;
-                  color = "#22c55e";
-                  border = isSelected ? "2px solid #3b82f6" : "2px solid #22c55e";
+                  color = "#10b981"; // emerald-500（凡例に合わせる）
+                  border = isSelected ? "2px solid #3b82f6" : "2px solid #10b981";
                   height = "30px";
                   top = 0;
                 } else if ("properties" in item && "type" in item && item.type === "expression") {
                   left = (item.frame / duration) * 100;
-                  color = "#facc15";
-                  border = isSelected ? "2px solid #3b82f6" : "2px solid #facc15";
+                  color = "#fbbf24"; // yellow-400（凡例に合わせる）
+                  border = isSelected ? "2px solid #3b82f6" : "2px solid #fbbf24";
                 } else if (
                   "type" in item &&
                   (item as FormulaTimelineItem | SubtitleTimelineItem).type === "formula"
@@ -810,7 +937,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   const formulaItem = item as FormulaTimelineItem;
                   left = (formulaItem.frame / duration) * 100;
                   width = Math.max((0.5 / duration) * 100, 1);
-                  color = "#8b5cf6"; // purple-500
+                  color = "#8b5cf6"; // purple-500（凡例と同じ）
                   border = isSelected ? "2px solid #3b82f6" : "2px solid #8b5cf6";
                 } else if (
                   "type" in item &&
@@ -819,7 +946,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   const subtitleItem = item as SubtitleTimelineItem;
                   left = (subtitleItem.frame / duration) * 100;
                   width = Math.max((0.5 / duration) * 100, 1);
-                  color = "#3b82f6"; // blue-500
+                  color = "#3b82f6"; // blue-500（凡例と同じ）
                   border = isSelected ? "2px solid #3b82f6" : "2px solid #3b82f6";
                 }
                 return (
@@ -897,15 +1024,41 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                           y: e.clientY,
                           event: item as TimelineEvent,
                         });
+                      } else if (
+                        "type" in item &&
+                        (item as FormulaTimelineItem).type === "formula"
+                      ) {
+                        setContextMenu({
+                          x: e.clientX,
+                          y: e.clientY,
+                          formula: (item as FormulaTimelineItem).args.formula,
+                        });
+                      } else if (
+                        "type" in item &&
+                        (item as SubtitleTimelineItem).type === "subtitle"
+                      ) {
+                        setContextMenu({
+                          x: e.clientX,
+                          y: e.clientY,
+                          subtitle: (item as SubtitleTimelineItem).args.subtitle,
+                        });
                       }
                     }}
                     title={
                       "action" in item
                         ? `${item.action} at frame ${item.frame} (ドラッグで移動可能)`
                         : "state" in item
-                        ? `State Event at frame ${item.frame}`
+                        ? `State Event at frame ${item.frame} (ドラッグで移動可能)`
                         : "properties" in item && "type" in item && item.type === "expression"
-                        ? `Expression Event at frame ${item.frame}`
+                        ? `Expression Event at frame ${item.frame} (ドラッグで移動可能)`
+                        : "type" in item && (item as FormulaTimelineItem).type === "formula"
+                        ? `Formula at frame ${
+                            (item as FormulaTimelineItem).frame
+                          } (ドラッグで移動可能)`
+                        : "type" in item && (item as SubtitleTimelineItem).type === "subtitle"
+                        ? `Subtitle at frame ${
+                            (item as SubtitleTimelineItem).frame
+                          } (ドラッグで移動可能)`
                         : ""
                     }
                   >
@@ -914,68 +1067,87 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 );
               })}
               {/* 右クリックメニュー: オーバーレイでラップし、メニュー以外クリックで閉じる */}
-              {contextMenu && contextMenu.event && (
-                <>
-                  <div
-                    className="fixed inset-0 z-[99998]"
-                    style={{ background: "transparent" }}
-                    onClick={() => setContextMenu(null)}
-                  />
-                  <div
-                    className="fixed bg-gray-900 text-white rounded-lg shadow-xl border border-gray-700"
-                    style={{
-                      left: (() => {
-                        const menuWidth = 180;
-                        const winWidth = window.innerWidth;
-                        return Math.min(contextMenu.x, winWidth - menuWidth - 8);
-                      })(),
-                      top: (() => {
-                        const menuHeight = 140;
-                        // 必ず上方向に表示（下にinput rangeがあるため）
-                        return Math.max(contextMenu.y - menuHeight - 8, 8);
-                      })(),
-                      minWidth: 180,
-                      zIndex: 99999,
-                      boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
-                    }}
-                  >
-                    <div className="py-2">
-                      <button
-                        className="block w-full text-left px-5 py-3 text-sm font-medium rounded-lg hover:bg-gray-700 hover:text-blue-200 transition-colors"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setContextMenu(null);
-                          if (onEventSelect && contextMenu.event) onEventSelect(contextMenu.event);
-                        }}
-                      >
-                        編集
-                      </button>
-                      <button
-                        className="block w-full text-left px-5 py-3 text-sm font-medium rounded-lg hover:bg-gray-700 hover:text-green-200 transition-colors"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setContextMenu(null);
-                          if (onEventDuplicate && contextMenu.event)
-                            onEventDuplicate(contextMenu.event);
-                        }}
-                      >
-                        複製
-                      </button>
-                      <button
-                        className="block w-full text-left px-5 py-3 text-sm font-medium rounded-lg hover:bg-gray-700 hover:text-red-300 transition-colors"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setContextMenu(null);
-                          if (onEventDelete && contextMenu.event?.id)
-                            onEventDelete(contextMenu.event.id);
-                        }}
-                      >
-                        削除
-                      </button>
+              {contextMenu &&
+                (contextMenu.event || contextMenu.formula || contextMenu.subtitle) && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-[99998]"
+                      style={{ background: "transparent" }}
+                      onClick={() => setContextMenu(null)}
+                    />
+                    <div
+                      className="fixed bg-gray-900 text-white rounded-lg shadow-xl border border-gray-700"
+                      style={{
+                        left: (() => {
+                          const menuWidth = 180;
+                          const winWidth = window.innerWidth;
+                          return Math.min(contextMenu.x, winWidth - menuWidth - 8);
+                        })(),
+                        top: (() => {
+                          const menuHeight = 140;
+                          // 必ず上方向に表示（下にinput rangeがあるため）
+                          return Math.max(contextMenu.y - menuHeight - 8, 8);
+                        })(),
+                        minWidth: 180,
+                        zIndex: 99999,
+                        boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
+                      }}
+                    >
+                      <div className="py-2">
+                        <button
+                          className="block w-full text-left px-5 py-3 text-sm font-medium rounded-lg hover:bg-gray-700 hover:text-blue-200 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setContextMenu(null);
+                            if (contextMenu.event && onEventSelect) {
+                              onEventSelect(contextMenu.event);
+                            } else if (contextMenu.formula && onFormulaSelect) {
+                              onFormulaSelect(contextMenu.formula);
+                              setActiveTab("formula");
+                            } else if (contextMenu.subtitle && onSubtitleSelect) {
+                              onSubtitleSelect(contextMenu.subtitle);
+                              setActiveTab("formula");
+                            }
+                          }}
+                        >
+                          編集
+                        </button>
+                        <button
+                          className="block w-full text-left px-5 py-3 text-sm font-medium rounded-lg hover:bg-gray-700 hover:text-green-200 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setContextMenu(null);
+                            if (contextMenu.event && onEventDuplicate) {
+                              onEventDuplicate(contextMenu.event);
+                            } else if (contextMenu.formula && onFormulaDuplicate) {
+                              onFormulaDuplicate(contextMenu.formula);
+                            } else if (contextMenu.subtitle && onSubtitleDuplicate) {
+                              onSubtitleDuplicate(contextMenu.subtitle);
+                            }
+                          }}
+                        >
+                          複製
+                        </button>
+                        <button
+                          className="block w-full text-left px-5 py-3 text-sm font-medium rounded-lg hover:bg-gray-700 hover:text-red-300 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setContextMenu(null);
+                            if (contextMenu.event?.id && onEventDelete) {
+                              onEventDelete(contextMenu.event.id);
+                            } else if (contextMenu.formula?.id && onFormulaDelete) {
+                              onFormulaDelete(contextMenu.formula.id);
+                            } else if (contextMenu.subtitle?.id && onSubtitleDelete) {
+                              onSubtitleDelete(contextMenu.subtitle.id);
+                            }
+                          }}
+                        >
+                          削除
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
             </div>
           </div>
 
