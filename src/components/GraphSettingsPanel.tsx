@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from "react";
 import type { Calculator } from "../types/desmos";
+import type { GraphingCalculatorOptions } from "../types/desmos";
+import { CalculatorOptionsPanel } from "./CalculatorOptionsPanel";
 
 export interface GraphSettingsPanelProps {
   computeCalculator?: Calculator | null;
   initialSettings: GraphSettings;
+  initialOptions?: GraphingCalculatorOptions & { graphType?: "2d" | "3d" };
   onSave?: (settings: GraphSettings) => void;
+  onOptionsSave?: (options: GraphingCalculatorOptions & { graphType?: "2d" | "3d" }) => void;
+  onGraphTypeChange?: (graphType: "2d" | "3d") => void;
 }
 
 export interface GraphSettings {
@@ -46,12 +51,16 @@ const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
 export const GraphSettingsPanel: React.FC<GraphSettingsPanelProps> = ({
   computeCalculator,
   initialSettings,
+  initialOptions,
   onSave,
+  onOptionsSave,
+  onGraphTypeChange,
 }) => {
   const [settings, setSettings] = useState<GraphSettings>(
     initialSettings ?? DEFAULT_GRAPH_SETTINGS
   );
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [activeTab, setActiveTab] = useState<"settings" | "options">("settings");
 
   // initialSettingsが変化したらsettingsも更新し、computeCalculatorにも反映
   useEffect(() => {
@@ -108,80 +117,121 @@ export const GraphSettingsPanel: React.FC<GraphSettingsPanelProps> = ({
   };
 
   return (
-    <div className="p-4 space-y-6 max-h-full overflow-y-auto">
-      <h2 className="text-lg font-semibold mb-4">グラフ描画設定</h2>
-      <div className="grid grid-cols-2 gap-3">
-        {Object.entries(settings).map(([key, value]) => {
-          if (typeof value === "boolean") {
-            return (
-              <div key={key}>
-                <label className="text-xs font-medium">
-                  <input
-                    type="checkbox"
-                    checked={value}
-                    onChange={(e) => handleChange(key as keyof GraphSettings, e.target.checked)}
-                    className="mr-2"
-                  />
-                  {key}
-                </label>
-              </div>
-            );
-          }
-          return (
-            <div key={key}>
-              <label className="text-xs font-medium mb-1 block">{key}</label>
-              <input
-                type={typeof value === "number" ? "number" : "text"}
-                value={value}
-                onChange={(e) =>
-                  handleChange(
-                    key as keyof GraphSettings,
-                    typeof value === "number" ? Number(e.target.value) : e.target.value
-                  )
-                }
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
-              />
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex space-x-3 pt-6 border-t border-gray-200">
+    <div className="h-full flex flex-col">
+      {/* タブヘッダー */}
+      <div className="flex border-b border-gray-200 flex-shrink-0">
         <button
-          onClick={handleSave}
-          disabled={!hasUnsavedChanges}
-          className={`flex-1 flex items-center justify-center space-x-2 px-4 py-3 rounded-lg font-medium text-sm transition-all duration-200 ${
-            !hasUnsavedChanges
-              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-              : "bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 hover:shadow-md"
+          onClick={() => setActiveTab("settings")}
+          className={`flex-1 px-2 py-2 text-xs font-medium ${
+            activeTab === "settings"
+              ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+              : "text-gray-500 hover:text-gray-700"
           }`}
         >
-          {hasUnsavedChanges ? "変更を保存" : "保存済み"}
+          Graph Settings
         </button>
-        {hasUnsavedChanges && (
-          <button
-            onClick={() => {
-              setSettings(initialSettings);
-              setHasUnsavedChanges(false);
-            }}
-            className="px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors duration-200 text-sm font-medium"
-          >
-            変更を破棄
-          </button>
+        <button
+          onClick={() => setActiveTab("options")}
+          className={`flex-1 px-2 py-2 text-xs font-medium ${
+            activeTab === "options"
+              ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Calculator Options
+        </button>
+      </div>
+
+      {/* タブコンテンツ */}
+      <div className="flex-1 overflow-hidden">
+        {activeTab === "settings" && (
+          <div className="p-4 space-y-6 max-h-full overflow-y-auto">
+            <h2 className="text-lg font-semibold mb-4">グラフ描画設定</h2>
+            <div className="grid grid-cols-2 gap-3">
+              {Object.entries(settings).map(([key, value]) => {
+                if (typeof value === "boolean") {
+                  return (
+                    <div key={key}>
+                      <label className="text-xs font-medium">
+                        <input
+                          type="checkbox"
+                          checked={value}
+                          onChange={(e) =>
+                            handleChange(key as keyof GraphSettings, e.target.checked)
+                          }
+                          className="mr-2"
+                        />
+                        {key}
+                      </label>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={key}>
+                    <label className="text-xs font-medium mb-1 block">{key}</label>
+                    <input
+                      type={typeof value === "number" ? "number" : "text"}
+                      value={value}
+                      onChange={(e) =>
+                        handleChange(
+                          key as keyof GraphSettings,
+                          typeof value === "number" ? Number(e.target.value) : e.target.value
+                        )
+                      }
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex space-x-3 pt-6 border-t border-gray-200">
+              <button
+                onClick={handleSave}
+                disabled={!hasUnsavedChanges}
+                className={`flex-1 flex items-center justify-center space-x-2 px-4 py-3 rounded-lg font-medium text-sm transition-all duration-200 ${
+                  !hasUnsavedChanges
+                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    : "bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 hover:shadow-md"
+                }`}
+              >
+                {hasUnsavedChanges ? "変更を保存" : "保存済み"}
+              </button>
+              {hasUnsavedChanges && (
+                <button
+                  onClick={() => {
+                    setSettings(initialSettings);
+                    setHasUnsavedChanges(false);
+                  }}
+                  className="px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors duration-200 text-sm font-medium"
+                >
+                  変更を破棄
+                </button>
+              )}
+            </div>
+            {hasUnsavedChanges && (
+              <div className="flex items-center space-x-2 text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded-lg mt-3">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.996-.833-2.464 0L3.349 16.5c-.77.833.192 2.5 1.732 2.5z"
+                  />
+                </svg>
+                <span>未保存の変更があります</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "options" && (
+          <CalculatorOptionsPanel
+            initialOptions={initialOptions || { graphType: "2d" }}
+            onSave={onOptionsSave}
+            onGraphTypeChange={onGraphTypeChange}
+          />
         )}
       </div>
-      {hasUnsavedChanges && (
-        <div className="flex items-center space-x-2 text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded-lg mt-3">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.996-.833-2.464 0L3.349 16.5c-.77.833.192 2.5 1.732 2.5z"
-            />
-          </svg>
-          <span>未保存の変更があります</span>
-        </div>
-      )}
     </div>
   );
 };

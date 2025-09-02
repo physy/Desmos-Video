@@ -4,12 +4,11 @@ import { TimelineControls } from "./components/TimelineControls";
 import GraphPreview from "./components/GraphPreview";
 import type { StateEvent } from "./types/timeline";
 import { UnifiedEventEditPanel } from "./components/UnifiedEventEditPanel";
-// ...existing code...
 import { VideoExportPanel } from "./components/VideoExportPanel";
 import { GraphSettingsPanel, type GraphSettings } from "./components/GraphSettingsPanel";
 import { ResizablePanel } from "./components/ResizablePanel";
 import { useTimeline } from "./hooks/useTimeline";
-import type { Calculator } from "./types/desmos";
+import type { Calculator, GraphingCalculatorOptions } from "./types/desmos";
 import type { TimelineEvent, VideoExportSettings, AnimationProject } from "./types/timeline";
 import "./App.css";
 import { StateEventEditPanel } from "./components/StateEventEditPanel";
@@ -41,6 +40,13 @@ function App() {
     squareAxes: false,
   };
   const [graphSettings, setGraphSettings] = useState<GraphSettings>(DEFAULT_GRAPH_SETTINGS);
+
+  // CalculatorOptionsの状態（初期値は最小限に）
+  const [calculatorOptions, setCalculatorOptions] = useState<
+    GraphingCalculatorOptions & { graphType: "2d" | "3d" }
+  >({
+    graphType: "2d",
+  });
 
   // VideoExportSettingsの状態（宣言を前方へ移動）
   const DEFAULT_VIDEO_SETTINGS: VideoExportSettings = {
@@ -87,17 +93,34 @@ function App() {
     setSelectedStateId,
     selectedEventId,
     setSelectedEventId,
-  } = useTimeline(calculator);
+  } = useTimeline(calculator, calculatorOptions);
 
   // ...existing code...
 
   // videoSettings宣言の後に保存・読み込みコールバックを定義
+  // Calculator再作成のハンドラー
+  const handleGraphTypeChange = useCallback(
+    (newGraphType: "2d" | "3d") => {
+      setCalculatorOptions((prev) => ({ ...prev, graphType: newGraphType }));
+
+      // 既存のcalculatorを破棄
+      if (calculator) {
+        calculator.destroy();
+      }
+
+      // DesmosGraphコンポーネントに再作成を委譲
+      setCalculator(null);
+    },
+    [calculator]
+  );
+
   const handleSaveProject = useCallback(() => {
-    // AnimationProject型で保存（graphSettings, videoExportSettingsも含む）
+    // AnimationProject型で保存（graphSettings, videoExportSettings, calculatorOptionsも含む）
     const saveObj: AnimationProject = {
       ...project,
       graphSettings,
       videoExportSettings: videoSettings,
+      calculatorOptions,
     };
     const dataStr = JSON.stringify(saveObj, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
@@ -108,7 +131,7 @@ function App() {
     a.click();
     URL.revokeObjectURL(url);
     setFileMenuOpen(false);
-  }, [project, graphSettings, videoSettings]);
+  }, [project, graphSettings, videoSettings, calculatorOptions]);
 
   const handleLoadProject = useCallback(() => {
     const input = document.createElement("input");
@@ -129,6 +152,26 @@ function App() {
           if (json.videoExportSettings) {
             setVideoSettings(json.videoExportSettings);
           }
+
+          // calculatorOptionsも復元
+          if (json.calculatorOptions) {
+            const oldGraphType = calculatorOptions.graphType;
+            const newOptions = {
+              ...json.calculatorOptions,
+              graphType: json.calculatorOptions.graphType || ("2d" as const),
+            };
+            setCalculatorOptions(newOptions);
+
+            // グラフタイプが変更された場合、calculator再作成
+            if (newOptions.graphType !== oldGraphType) {
+              handleGraphTypeChange(newOptions.graphType);
+            }
+          } else {
+            // calculatorOptionsが保存されていない場合はデフォルト値を設定
+            const defaultOptions = { graphType: "2d" as const };
+            setCalculatorOptions(defaultOptions);
+          }
+
           setProject(json);
         } catch (err) {
           alert("読み込みに失敗しました: " + err);
@@ -138,7 +181,13 @@ function App() {
     };
     input.click();
     setFileMenuOpen(false);
-  }, [setProject, setGraphSettings, setVideoSettings]);
+  }, [
+    setProject,
+    setGraphSettings,
+    setVideoSettings,
+    calculatorOptions.graphType,
+    handleGraphTypeChange,
+  ]);
 
   const fileMenuItems = [
     {
@@ -502,6 +551,7 @@ function App() {
                       currentFrame={currentFrame}
                       stateManager={stateManager}
                       fps={fps}
+                      calculatorOptions={calculatorOptions}
                     />
                   ) : (
                     // プレビュー画面（拡張性のためラップ）
@@ -658,6 +708,15 @@ function App() {
                             setGraphSettings(settings);
                             stateManager?.clearCache();
                           }}
+                          initialOptions={calculatorOptions}
+                          onOptionsSave={(options) => {
+                            const optionsWithGraphType = {
+                              ...options,
+                              graphType: options.graphType || ("2d" as const),
+                            };
+                            setCalculatorOptions(optionsWithGraphType);
+                          }}
+                          onGraphTypeChange={handleGraphTypeChange}
                         />
                       </div>
                     )}

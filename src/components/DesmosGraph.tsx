@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import type { Calculator, GraphingCalculatorOptions } from "../types/desmos";
 import type { StateManager } from "../utils/stateManager";
 
 interface DesmosGraphProps {
   options?: GraphingCalculatorOptions;
+  calculatorOptions?: GraphingCalculatorOptions & { graphType: "2d" | "3d" };
   onCalculatorReady?: (calculator: Calculator) => void;
   className?: string;
   aspectRatio?: number; // 縦横比 (width/height) デフォルト: 16/9
@@ -14,6 +15,7 @@ interface DesmosGraphProps {
 
 export const DesmosGraph: React.FC<DesmosGraphProps> = ({
   options = {},
+  calculatorOptions,
   onCalculatorReady,
   className = "w-full h-full",
   aspectRatio = 16 / 9, // フルHDのアスペクト比をデフォルトに
@@ -58,49 +60,81 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
-  useEffect(() => {
-    let mounted = true;
-
-    const initializeCalculator = () => {
-      if (!containerRef.current || !window.Desmos || isInitializedRef.current || !mounted) return;
-
-      const defaultOptions: GraphingCalculatorOptions = {
-        keypad: false,
-        expressions: true,
-        expressionsCollapsed: true,
-        showIDs: true,
-        settingsMenu: true,
-        zoomButtons: false,
-        expressionsTopbar: true,
-        pointsOfInterest: false,
-        trace: false,
-        border: false,
-        lockViewport: false,
-        branding: false,
-        pasteGraphLink: true,
-        language: "ja",
-        ...optionsRef.current,
-      };
-
+  // calculatorを破棄する関数
+  const destroyCalculator = useCallback(() => {
+    if (calculatorRef.current) {
       try {
+        calculatorRef.current.destroy();
+      } catch (error) {
+        console.error("Error destroying calculator:", error);
+      }
+      calculatorRef.current = null;
+    }
+    isInitializedRef.current = false;
+  }, []);
+
+  // calculatorを初期化する関数
+  const initializeCalculator = useCallback(() => {
+    if (!containerRef.current || !window.Desmos || isInitializedRef.current) return;
+
+    // デフォルトのDesmos設定（一元管理）
+    const defaultDesmosOptions: GraphingCalculatorOptions = {
+      keypad: false,
+      expressions: true,
+      expressionsCollapsed: true,
+      showIDs: true,
+      settingsMenu: true,
+      zoomButtons: false,
+      expressionsTopbar: true,
+      pointsOfInterest: false,
+      trace: false,
+      border: false,
+      lockViewport: false,
+      branding: false,
+      pasteGraphLink: true,
+      language: "ja",
+      ...optionsRef.current, // propsのoptionsで上書き可能
+    };
+
+    // App.tsxからのcalculatorOptionsをマージ（graphTypeは除く）
+    const { graphType, ...appOptions } = calculatorOptions || {};
+    const finalOptions = {
+      ...defaultDesmosOptions,
+      ...appOptions, // App.tsxからの設定で上書き
+    };
+
+    try {
+      // graphTypeに基づいて適切なコンストラクタを使用
+      const selectedGraphType = calculatorOptions?.graphType || "2d";
+
+      if (selectedGraphType === "3d") {
+        // Calculator3Dを使用
+        calculatorRef.current = window.Desmos.Calculator3D?.(containerRef.current, finalOptions);
+      } else {
+        // GraphingCalculatorを使用（デフォルト）
         calculatorRef.current = window.Desmos.GraphingCalculator(
           containerRef.current,
-          defaultOptions
+          finalOptions
         );
-        isInitializedRef.current = true;
-        if (onCalculatorReadyRef.current && calculatorRef.current) {
-          onCalculatorReadyRef.current(calculatorRef.current);
-        }
-      } catch (error) {
-        console.error("Failed to initialize Desmos calculator:", error);
       }
-    };
+
+      isInitializedRef.current = true;
+      if (onCalculatorReadyRef.current && calculatorRef.current) {
+        onCalculatorReadyRef.current(calculatorRef.current);
+      }
+    } catch (error) {
+      console.error("Failed to initialize calculator:", error);
+    }
+  }, [calculatorOptions]);
+
+  useEffect(() => {
+    let mounted = true;
 
     // Desmos API script を動的に読み込み
     const loadDesmosAPI = () => {
       if (window.Desmos) {
         setIsLoaded(true);
-        initializeCalculator();
+        if (mounted) initializeCalculator();
         return;
       }
 
@@ -136,7 +170,18 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
       }
       isInitializedRef.current = false;
     };
-  }, []); // 依存関係を空の配列にして一度だけ実行
+  }, [calculatorOptions, initializeCalculator]); // calculatorOptionsの変更時に再初期化
+
+  // calculatorOptionsのgraphTypeが変更された場合の処理
+  useEffect(() => {
+    if (calculatorRef.current) {
+      // 既存のcalculatorを破棄して再作成
+      destroyCalculator();
+      setTimeout(() => {
+        initializeCalculator();
+      }, 100); // 少し待ってから再初期化
+    }
+  }, [calculatorOptions?.graphType, destroyCalculator, initializeCalculator]);
 
   // ResizeObserverで親DOMサイズ変化を監視し、グラフ領域サイズを再計算
   useEffect(() => {

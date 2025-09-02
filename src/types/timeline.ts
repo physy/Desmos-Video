@@ -178,6 +178,7 @@ export interface AnimationEvent {
 }
 
 import type { GraphSettings } from "../components/GraphSettingsPanel";
+import type { GraphingCalculatorOptions } from "./desmos";
 
 export interface AnimationProject {
   timeline: TimelineEvent[];
@@ -187,6 +188,7 @@ export interface AnimationProject {
   fps?: number;
   graphSettings?: GraphSettings;
   videoExportSettings?: VideoExportSettings;
+  calculatorOptions?: GraphingCalculatorOptions & { graphType?: "2d" | "3d" };
 }
 
 export interface CheckpointState {

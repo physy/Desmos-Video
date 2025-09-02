@@ -260,9 +260,8 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
             calculator.controller.evaluator.notifyWhenSynced(() => {
               calculator.controller
                 .getGrapher()
-                .asyncScreenshot(
-                  { width, height, showLabels: true, targetPixelRatio: 3 },
-                  (url: string) => resolve(url)
+                .asyncScreenshot({ width, height, showLabels: true }, (url: string) =>
+                  resolve(url)
                 );
             });
           });
