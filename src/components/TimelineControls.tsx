@@ -8,8 +8,28 @@ type SelectionRect = {
 };
 import { Play, Pause, SkipBack, SkipForward } from "lucide-react";
 import type { TimelineEvent, StateEvent, ExpressionEvent } from "../types/timeline";
+import type { FormulaElement, SubtitleElement } from "../types/formula";
 // TimelineItem型を定義（型エイリアス）
 type TimelineItem = TimelineEvent | StateEvent | ExpressionEvent;
+
+// 数式・字幕用の擬似TimelineItem型
+interface FormulaTimelineItem {
+  id: string;
+  frame: number;
+  action: "showFormula";
+  args: { formula: FormulaElement };
+  type: "formula";
+}
+
+interface SubtitleTimelineItem {
+  id: string;
+  frame: number;
+  action: "showSubtitle";
+  args: { subtitle: SubtitleElement };
+  type: "subtitle";
+}
+
+type ExtendedTimelineItem = TimelineItem | FormulaTimelineItem | SubtitleTimelineItem;
 
 interface EventWithTrack extends TimelineEvent {
   track: number;
@@ -37,7 +57,12 @@ interface TimelineControlsProps {
   onEventDelete: (eventId: string) => void;
   onEventDuplicate: (event: TimelineEvent) => void;
   selectedEventId?: string;
-  setActiveTab: (tab: "state" | "events" | "timeline" | "export") => void;
+  setActiveTab: (tab: "state" | "events" | "timeline" | "export" | "formula") => void;
+  // 数式・字幕関連
+  formulas?: FormulaElement[];
+  subtitles?: SubtitleElement[];
+  onFormulaSelect?: (formula: FormulaElement | null) => void;
+  onSubtitleSelect?: (subtitle: SubtitleElement | null) => void;
 }
 
 export const TimelineControls: React.FC<TimelineControlsProps> = ({
@@ -57,6 +82,10 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   onStateTimeChange,
   onEventDelete,
   fps = 30,
+  formulas = [],
+  subtitles = [],
+  onFormulaSelect,
+  onSubtitleSelect,
   onEventDuplicate,
   // selectedEventId,
   onStateSelect,
@@ -105,7 +134,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     if (!isSelecting || !selectionRect) return;
     const selected: string[] = [];
     // TimelineItemベースで選択判定（track割り当て済みリストを使用）
-    allMarkersWithTrack.markers.forEach((item: TimelineItem & { track: number }) => {
+    allMarkersWithTrack.markers.forEach((item: ExtendedTimelineItem & { track: number }) => {
       const el = document.querySelector(`[data-id='${item.id}']`);
       if (!el) return;
       const rect = el.getBoundingClientRect();
@@ -183,7 +212,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
   } | null>(null);
 
   // ドラッグハンドラー（イベント用）
-  const handleItemMouseDown = (item: TimelineItem, e: React.MouseEvent) => {
+  const handleItemMouseDown = (item: ExtendedTimelineItem, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!item.id) return;
     if (selectedIds.length > 1) {
@@ -395,7 +424,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
     });
 
     return { events: result, trackCount: tracks.length };
-  }, [timeline, duration, zoom]);
+  }, [timeline, duration]);
 
   // イベントタイプに応じた色を取得
   const getEventColor = (action: string): string => {
@@ -507,11 +536,30 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
 
   // 全種類のマーカーをtrack（レーン）で重ならないように配置
   const allMarkersWithTrack = useMemo(() => {
-    // 1. 全種類まとめてフレーム順で並べる
+    // 1. 全種類まとめてフレーム順で並べる（数式・字幕も含む）
     const all: TimelineItem[] = [...timeline, ...stateEvents];
+
+    // 数式・字幕要素をTimelineItem形式に変換して追加
+    const formulaItems: FormulaTimelineItem[] = formulas.map((formula) => ({
+      id: formula.id,
+      frame: formula.frame,
+      action: "showFormula",
+      args: { formula },
+      type: "formula",
+    }));
+
+    const subtitleItems: SubtitleTimelineItem[] = subtitles.map((subtitle) => ({
+      id: subtitle.id,
+      frame: subtitle.frame,
+      action: "showSubtitle",
+      args: { subtitle },
+      type: "subtitle",
+    }));
+
+    const allWithFormulas: ExtendedTimelineItem[] = [...all, ...formulaItems, ...subtitleItems];
     // 2. track割り当て（durationと最低表示幅1%を加味）
-    const tracks: TimelineItem[][] = [];
-    const result: Array<TimelineItem & { track: number }> = all
+    const tracks: ExtendedTimelineItem[][] = [];
+    const result: Array<ExtendedTimelineItem & { track: number }> = allWithFormulas
       .sort((a, b) => {
         const af = "frame" in a ? a.frame : 0;
         const bf = "frame" in b ? b.frame : 0;
@@ -556,7 +604,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
         return { ...item, track: trackIndex };
       });
     return { markers: result, trackCount: tracks.length };
-  }, [timeline, stateEvents, duration]);
+  }, [timeline, stateEvents, formulas, subtitles, duration]);
 
   return (
     <div className="h-full flex flex-col bg-gray-800 text-white border-t border-gray-700">
@@ -739,12 +787,11 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 let top = 3;
                 if ("action" in item) {
                   left = (item.frame / duration) * 100;
-                  width =
-                    (("action" in item && item.action === "startAnimation"
-                      ? (item.args.durationFrames as number) || 1
-                      : 0.1) /
-                      duration) *
-                    100;
+                  if (item.action === "startAnimation") {
+                    width = (((item.args.durationFrames as number) || 1) / duration) * 100;
+                  } else {
+                    width = (0.1 / duration) * 100;
+                  }
                   color = getEventColor(item.action);
                 } else if ("state" in item) {
                   left = (item.frame / duration) * 100;
@@ -756,6 +803,24 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                   left = (item.frame / duration) * 100;
                   color = "#facc15";
                   border = isSelected ? "2px solid #3b82f6" : "2px solid #facc15";
+                } else if (
+                  "type" in item &&
+                  (item as FormulaTimelineItem | SubtitleTimelineItem).type === "formula"
+                ) {
+                  const formulaItem = item as FormulaTimelineItem;
+                  left = (formulaItem.frame / duration) * 100;
+                  width = Math.max((0.5 / duration) * 100, 1);
+                  color = "#8b5cf6"; // purple-500
+                  border = isSelected ? "2px solid #3b82f6" : "2px solid #8b5cf6";
+                } else if (
+                  "type" in item &&
+                  (item as FormulaTimelineItem | SubtitleTimelineItem).type === "subtitle"
+                ) {
+                  const subtitleItem = item as SubtitleTimelineItem;
+                  left = (subtitleItem.frame / duration) * 100;
+                  width = Math.max((0.5 / duration) * 100, 1);
+                  color = "#3b82f6"; // blue-500
+                  border = isSelected ? "2px solid #3b82f6" : "2px solid #3b82f6";
                 }
                 return (
                   <div
@@ -784,16 +849,35 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                       } else if (item.id) {
                         setSelectedIds([item.id]);
                       }
-                      if ("action" in item && onEventSelect) {
-                        onEventSelect(item);
+
+                      // 選択処理
+                      if (
+                        "action" in item &&
+                        onEventSelect &&
+                        (item.action === "setExpression" ||
+                          item.action === "setMathBounds" ||
+                          item.action === "startAnimation" ||
+                          item.action === "endAnimation")
+                      ) {
+                        onEventSelect(item as TimelineEvent);
                       } else if ("state" in item && onStateSelect) {
                         onStateSelect(item);
+                      } else if ("type" in item && item.type === "formula" && onFormulaSelect) {
+                        onFormulaSelect(item.args.formula);
+                      } else if ("type" in item && item.type === "subtitle" && onSubtitleSelect) {
+                        onSubtitleSelect(item.args.subtitle);
                       } else if ("frame" in item) {
                         onSeek(item.frame);
                       }
+
                       // タブ切り替え
                       if ("state" in item) {
                         setActiveTab("state");
+                      } else if (
+                        "type" in item &&
+                        (item.type === "formula" || item.type === "subtitle")
+                      ) {
+                        setActiveTab("formula");
                       } else {
                         setActiveTab("events");
                       }
@@ -801,11 +885,17 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                     onDoubleClick={() => item.id && setSelectedIds([item.id])}
                     onContextMenu={(e) => {
                       e.preventDefault();
-                      if ("action" in item) {
+                      if (
+                        "action" in item &&
+                        (item.action === "setExpression" ||
+                          item.action === "setMathBounds" ||
+                          item.action === "startAnimation" ||
+                          item.action === "endAnimation")
+                      ) {
                         setContextMenu({
                           x: e.clientX,
                           y: e.clientY,
-                          event: item,
+                          event: item as TimelineEvent,
                         });
                       }
                     }}
@@ -937,6 +1027,14 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
             <div className="flex items-center space-x-1">
               <div className="w-3 h-3 bg-yellow-400 rounded-sm border border-yellow-300"></div>
               <span>Event</span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <div className="w-3 h-3 bg-purple-500 rounded-sm border border-purple-400"></div>
+              <span>Formula</span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <div className="w-3 h-3 bg-blue-500 rounded-sm border border-blue-400"></div>
+              <span>Subtitle</span>
             </div>
             <div className="flex items-center space-x-1">
               <div className="w-3 h-3 bg-green-200 opacity-60"></div>

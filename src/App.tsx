@@ -7,9 +7,12 @@ import { UnifiedEventEditPanel } from "./components/UnifiedEventEditPanel";
 import { VideoExportPanel } from "./components/VideoExportPanel";
 import { GraphSettingsPanel, type GraphSettings } from "./components/GraphSettingsPanel";
 import { ResizablePanel } from "./components/ResizablePanel";
+import { FormulaEditPanel } from "./components/FormulaEditPanel";
 import { useTimeline } from "./hooks/useTimeline";
+import { useFormulaManager } from "./hooks/useFormulaManager";
 import type { Calculator, GraphingCalculatorOptions } from "./types/desmos";
 import type { TimelineEvent, VideoExportSettings, AnimationProject } from "./types/timeline";
+import type { FormulaElement, SubtitleElement } from "./types/formula";
 import "./App.css";
 import { StateEventEditPanel } from "./components/StateEventEditPanel";
 
@@ -95,6 +98,45 @@ function App() {
     setSelectedEventId,
   } = useTimeline(calculator, calculatorOptions);
 
+  // 数式・字幕管理
+  const {
+    formulas,
+    subtitles,
+    addFormula,
+    addSubtitle,
+    updateElement,
+    deleteElement,
+    duplicateElement: duplicateFormulaElement,
+    clearAll: clearAllFormulas,
+    exportData: exportFormulaData,
+    importData: importFormulaData,
+  } = useFormulaManager({
+    initialFormulas: project.formulas || [],
+    initialSubtitles: project.subtitles || [],
+  });
+
+  // プロジェクトデータが変更された時にフォーミュラマネージャーを同期
+  useEffect(() => {
+    if (project.formulas || project.subtitles) {
+      importFormulaData({
+        formulas: project.formulas || [],
+        subtitles: project.subtitles || [],
+      });
+    }
+  }, [project.formulas, project.subtitles, importFormulaData]);
+
+  // 数式・字幕の選択状態
+  const [selectedFormulaElementId, setSelectedFormulaElementId] = useState<string | null>(null);
+
+  // 数式・字幕データの変更をプロジェクトに反映
+  useEffect(() => {
+    setProject((prev) => ({
+      ...prev,
+      formulas,
+      subtitles,
+    }));
+  }, [formulas, subtitles, setProject]);
+
   // ...existing code...
 
   // videoSettings宣言の後に保存・読み込みコールバックを定義
@@ -115,12 +157,14 @@ function App() {
   );
 
   const handleSaveProject = useCallback(() => {
-    // AnimationProject型で保存（graphSettings, videoExportSettings, calculatorOptionsも含む）
+    // AnimationProject型で保存（graphSettings, videoExportSettings, calculatorOptions, formulas, subtitlesも含む）
     const saveObj: AnimationProject = {
       ...project,
       graphSettings,
       videoExportSettings: videoSettings,
       calculatorOptions,
+      formulas,
+      subtitles,
     };
     const dataStr = JSON.stringify(saveObj, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
@@ -131,7 +175,7 @@ function App() {
     a.click();
     URL.revokeObjectURL(url);
     setFileMenuOpen(false);
-  }, [project, graphSettings, videoSettings, calculatorOptions]);
+  }, [project, graphSettings, videoSettings, calculatorOptions, formulas, subtitles]);
 
   const handleLoadProject = useCallback(() => {
     const input = document.createElement("input");
@@ -153,6 +197,14 @@ function App() {
             setVideoSettings(json.videoExportSettings);
           }
 
+          // 数式・字幕データも復元
+          if (json.formulas || json.subtitles) {
+            importFormulaData({
+              formulas: json.formulas || [],
+              subtitles: json.subtitles || [],
+            });
+          }
+
           // calculatorOptionsも復元
           if (json.calculatorOptions) {
             const oldGraphType = calculatorOptions.graphType;
@@ -172,6 +224,14 @@ function App() {
             setCalculatorOptions(defaultOptions);
           }
 
+          // 数式・字幕データの復元
+          if (json.formulas && json.subtitles) {
+            importFormulaData({
+              formulas: json.formulas,
+              subtitles: json.subtitles,
+            });
+          }
+
           setProject(json);
         } catch (err) {
           alert("読み込みに失敗しました: " + err);
@@ -187,6 +247,7 @@ function App() {
     setVideoSettings,
     calculatorOptions.graphType,
     handleGraphTypeChange,
+    importFormulaData,
   ]);
 
   const fileMenuItems = [
@@ -269,9 +330,9 @@ function App() {
   }, [fileMenuOpen]);
   // グラフ表示/プレビュー表示のタブ状態
   const [graphViewTab, setGraphViewTab] = useState<"graph" | "preview">("graph");
-  const [activeTab, setActiveTab] = useState<"state" | "events" | "timeline" | "export" | "graph">(
-    "events"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "state" | "events" | "timeline" | "export" | "graph" | "formula"
+  >("events");
   // 選択状態はuseTimelineで一元管理
   // selectedStateId, setSelectedStateId, selectedEventId, setSelectedEventIdを利用
   // フルHD初期値
@@ -563,6 +624,8 @@ function App() {
                         stateManager={stateManager}
                         videoSettings={videoSettings ?? undefined}
                         fps={fps}
+                        formulas={formulas}
+                        subtitles={subtitles}
                       />
                     </div>
                   )}
@@ -573,7 +636,7 @@ function App() {
               <div className="h-full">
                 <div className="h-full bg-white  border border-gray-200 flex flex-col">
                   {/* タブヘッダー */}
-                  <div className="flex border-b border-gray-200 flex-shrink-0">
+                  <div className="flex border-b border-gray-200 flex-shrink-0 overflow-x-auto scrollbar-hidden">
                     <button
                       onClick={() => setActiveTab("state")}
                       className={`flex-1 px-2 py-2 text-xs font-medium ${
@@ -603,6 +666,16 @@ function App() {
                       }`}
                     >
                       Graph
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("formula")}
+                      className={`flex-1 px-2 py-2 text-xs font-medium ${
+                        activeTab === "formula"
+                          ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      Formula
                     </button>
                     <button
                       onClick={() => setActiveTab("export")}
@@ -721,6 +794,27 @@ function App() {
                       </div>
                     )}
 
+                    {activeTab === "formula" && (
+                      <div className="h-full">
+                        <FormulaEditPanel
+                          formulas={formulas}
+                          subtitles={subtitles}
+                          currentFrame={currentFrame}
+                          selectedElementId={selectedFormulaElementId ?? undefined}
+                          onElementUpdate={updateElement}
+                          onElementDelete={deleteElement}
+                          onElementCreate={(element) => {
+                            if ("content" in element) {
+                              addFormula(element as Omit<FormulaElement, "id">);
+                            } else {
+                              addSubtitle(element as Omit<SubtitleElement, "id">);
+                            }
+                          }}
+                          onElementSelect={(id) => setSelectedFormulaElementId(id ?? null)}
+                        />
+                      </div>
+                    )}
+
                     {activeTab === "export" && (
                       <div className="h-full">
                         <VideoExportPanel
@@ -815,6 +909,25 @@ function App() {
                 }}
                 setActiveTab={setActiveTab}
                 selectedEventId={selectedEventId ?? undefined}
+                // 数式・字幕関連のprops
+                formulas={formulas}
+                subtitles={subtitles}
+                onFormulaSelect={(formula) => {
+                  if (formula) {
+                    setSelectedFormulaElementId(formula.id);
+                    setActiveTab("formula");
+                  } else {
+                    setSelectedFormulaElementId(null);
+                  }
+                }}
+                onSubtitleSelect={(subtitle) => {
+                  if (subtitle) {
+                    setSelectedFormulaElementId(subtitle.id);
+                    setActiveTab("formula");
+                  } else {
+                    setSelectedFormulaElementId(null);
+                  }
+                }}
               />
             </div>
           </div>

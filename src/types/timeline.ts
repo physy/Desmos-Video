@@ -1,4 +1,5 @@
 import type { Calculator, DesmosState } from "./desmos";
+import type { FormulaElement, SubtitleElement } from "./formula";
 
 // Desmosの実際の Expression structure に基づく包括的な interface
 export interface DesmosExpression {
@@ -189,6 +190,9 @@ export interface AnimationProject {
   graphSettings?: GraphSettings;
   videoExportSettings?: VideoExportSettings;
   calculatorOptions?: GraphingCalculatorOptions & { graphType?: "2d" | "3d" };
+  // 数式・字幕データ
+  formulas?: FormulaElement[];
+  subtitles?: SubtitleElement[];
 }
 
 export interface CheckpointState {

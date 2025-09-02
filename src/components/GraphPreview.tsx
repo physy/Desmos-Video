@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import type { Calculator } from "../types/desmos";
+import type { FormulaElement, SubtitleElement } from "../types/formula";
+import { OverlayRenderer } from "./OverlayRenderer";
 
 interface GraphPreviewProps {
   computeCalculator: Calculator | null;
@@ -11,6 +13,9 @@ interface GraphPreviewProps {
     bounds?: { left: number; right: number; top: number; bottom: number };
   };
   fps?: number;
+  // 数式・字幕データ
+  formulas?: FormulaElement[];
+  subtitles?: SubtitleElement[];
 }
 
 const GraphPreview: React.FC<GraphPreviewProps> = ({
@@ -19,6 +24,8 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
   stateManager,
   videoSettings,
   fps = 30,
+  formulas = [],
+  subtitles = [],
 }) => {
   // frame→秒変換関数
   const frameToSeconds = (frame: number) => (fps ? frame / fps : frame / 30);
@@ -26,6 +33,83 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
   // <div>現在: {currentFrame}フレーム ({frameToSeconds(currentFrame).toFixed(2)}秒)</div>
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
+  const [graphBounds, setGraphBounds] = useState<{
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+  } | null>(null);
+
+  // graphBoundsの初期化とリセット処理
+  useEffect(() => {
+    if (!computeCalculator) return;
+
+    // グラフの境界を取得する関数
+    const updateGraphBounds = () => {
+      // StateManagerのvideoSettingsを優先して取得
+      const effectiveSettings = stateManager?.videoSettings ?? videoSettings;
+      const bounds = effectiveSettings?.bounds;
+
+      if (bounds) {
+        console.log("Setting graph bounds from settings:", bounds);
+        setGraphBounds(bounds);
+      } else {
+        // 現在の境界を取得
+        const currentBounds = computeCalculator.graphpaperBounds?.mathCoordinates;
+        if (currentBounds) {
+          console.log("Setting graph bounds from calculator:", currentBounds);
+          setGraphBounds(currentBounds);
+        } else {
+          // フォールバック: デフォルト境界
+          const defaultBounds = { left: -10, right: 10, top: 10, bottom: -10 };
+          console.log("Setting default graph bounds:", defaultBounds);
+          setGraphBounds(defaultBounds);
+        }
+      }
+    };
+
+    // 初期設定
+    updateGraphBounds();
+
+    // calculatorの状態変化を監視（タブ切り替え後の復旧用）
+    const interval = setInterval(() => {
+      const currentBounds = computeCalculator.graphpaperBounds?.mathCoordinates;
+      // graphBoundsが未設定、または無効な場合は更新
+      setGraphBounds((prev) => {
+        if (!prev || (prev.left === 0 && prev.right === 0)) {
+          updateGraphBounds();
+          return prev; // updateGraphBounds内でsetGraphBoundsが呼ばれるのでここではprevを返す
+        } else if (
+          currentBounds &&
+          (Math.abs(currentBounds.left - prev.left) > 0.01 ||
+            Math.abs(currentBounds.right - prev.right) > 0.01)
+        ) {
+          // 境界が変更された場合も更新
+          updateGraphBounds();
+          return prev;
+        }
+        return prev;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [computeCalculator, stateManager, videoSettings]);
+
+  // コンテナサイズ監視
+  useEffect(() => {
+    const updateSize = () => {
+      if (containerRef.current) {
+        const { width, height } = containerRef.current.getBoundingClientRect();
+        setContainerSize({ width, height });
+      }
+    };
+
+    updateSize();
+    window.addEventListener("resize", updateSize);
+    return () => window.removeEventListener("resize", updateSize);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,6 +142,16 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
       // 範囲指定があれば反映
       if (bounds) {
         computeCalculator.setMathBounds(bounds);
+        console.log("Applied bounds to calculator:", bounds);
+        // graphBoundsを確実に設定
+        setGraphBounds(bounds);
+      } else {
+        // 現在の境界を取得してgraphBoundsを更新
+        const currentBounds = computeCalculator.graphpaperBounds?.mathCoordinates;
+        if (currentBounds) {
+          console.log("Setting graphBounds from current calculator bounds:", currentBounds);
+          setGraphBounds(currentBounds);
+        }
       }
 
       // asyncScreenshotで確実に描画後の画像を取得
@@ -102,20 +196,54 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
   }, [computeCalculator, currentFrame, stateManager, videoSettings, fps]);
 
   return (
-    <div className="w-full h-full flex items-center justify-center bg-gray-100">
+    <div
+      ref={containerRef}
+      className="w-full h-full flex items-center justify-center bg-gray-100 relative"
+    >
       {!imageUrl ? (
         <span>プレビューを生成中...</span>
       ) : (
-        <img
-          src={imageUrl}
-          alt="Graph Preview"
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
-            background: "#fff",
-          }}
-        />
+        <>
+          <img
+            src={imageUrl}
+            alt="Graph Preview"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              background: "#fff",
+            }}
+          />
+          {/* 数式・字幕オーバーレイ */}
+          <OverlayRenderer
+            formulas={formulas}
+            subtitles={subtitles}
+            currentFrame={currentFrame}
+            graphBounds={graphBounds || { left: -10, right: 10, top: 10, bottom: -10 }}
+            containerWidth={containerSize.width}
+            containerHeight={containerSize.height}
+            className="absolute inset-0"
+          />
+          {/* デバッグ情報 */}
+          <div
+            style={{
+              position: "absolute",
+              bottom: 10,
+              right: 10,
+              background: "rgba(0, 0, 0, 0.7)",
+              color: "white",
+              padding: "4px 8px",
+              fontSize: "11px",
+              borderRadius: "4px",
+              zIndex: 1000,
+            }}
+          >
+            Bounds:{" "}
+            {graphBounds
+              ? `${graphBounds.left},${graphBounds.right},${graphBounds.top},${graphBounds.bottom}`
+              : "null"}
+          </div>
+        </>
       )}
     </div>
   );

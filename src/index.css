@@ -17,6 +17,12 @@ body {
   height: 100vh;
 }
 
+@utility scrollbar-hidden {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* Custom component styles */
 .slider {
   -webkit-appearance: none;
