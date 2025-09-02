@@ -85,61 +85,86 @@ const calculateAnimationProgress = (
 ): AnimationState => {
   const startFrame = element.frame;
   const animation = element.animation;
+  const exitAnimation = element.exitAnimation;
 
-  if (!animation || animation.type === "none") {
-    return {
-      frame: currentFrame,
-      progress: currentFrame >= startFrame ? 1 : 0,
-      visible: currentFrame >= startFrame && element.visible,
-    };
+  // 表示継続時間のチェック
+  const displayEndFrame = element.displayDuration ? startFrame + element.displayDuration : Infinity;
+
+  // 出現アニメーション
+  let enterProgress = 1;
+  let enterVisible = currentFrame >= startFrame;
+
+  if (animation && animation.type !== "none") {
+    const animationStartFrame = startFrame + (animation.delay || 0);
+    const animationEndFrame = animationStartFrame + animation.duration;
+
+    if (currentFrame < animationStartFrame) {
+      enterProgress = 0;
+      enterVisible = false;
+    } else if (currentFrame < animationEndFrame) {
+      const rawProgress = (currentFrame - animationStartFrame) / animation.duration;
+      enterProgress = applyEasing(rawProgress, animation.easing);
+    }
   }
 
-  const animationStartFrame = startFrame + (animation.delay || 0);
-  const animationEndFrame = animationStartFrame + animation.duration;
+  // 消去アニメーション
+  let exitProgress = 0;
+  let exitVisible = true;
 
-  if (currentFrame < animationStartFrame) {
+  if (exitAnimation && exitAnimation.type !== "none" && element.displayDuration) {
+    const exitStartFrame = displayEndFrame - exitAnimation.duration;
+
+    if (currentFrame >= displayEndFrame) {
+      // 完全に非表示
+      return {
+        frame: currentFrame,
+        progress: 0,
+        visible: false,
+        enterProgress: 1,
+        exitProgress: 1,
+      };
+    } else if (currentFrame >= exitStartFrame) {
+      // 消去アニメーション中
+      const rawProgress = (currentFrame - exitStartFrame) / exitAnimation.duration;
+      exitProgress = applyEasing(rawProgress, exitAnimation.easing);
+      exitVisible = true;
+    }
+  } else if (currentFrame >= displayEndFrame) {
+    // 消去アニメーションなしで表示継続時間を超えている場合は非表示
     return {
       frame: currentFrame,
       progress: 0,
       visible: false,
+      enterProgress: 1,
+      exitProgress: 1,
     };
   }
 
-  if (currentFrame >= animationEndFrame) {
-    return {
-      frame: currentFrame,
-      progress: 1,
-      visible: element.visible,
-    };
-  }
-
-  // アニメーション中
-  const rawProgress = (currentFrame - animationStartFrame) / animation.duration;
-
-  // イージング適用
-  let progress = rawProgress;
-  switch (animation.easing) {
-    case "ease-in":
-      progress = rawProgress * rawProgress;
-      break;
-    case "ease-out":
-      progress = 1 - Math.pow(1 - rawProgress, 2);
-      break;
-    case "ease-in-out":
-      progress =
-        rawProgress < 0.5
-          ? 2 * rawProgress * rawProgress
-          : 1 - Math.pow(-2 * rawProgress + 2, 2) / 2;
-      break;
-    default:
-      progress = rawProgress;
-  }
+  // 最終的な可視性と進行状況を計算
+  const finalProgress = enterProgress * (1 - exitProgress);
+  const finalVisible = enterVisible && exitVisible && element.visible && finalProgress > 0;
 
   return {
     frame: currentFrame,
-    progress: Math.max(0, Math.min(1, progress)),
-    visible: element.visible,
+    progress: Math.max(0, Math.min(1, finalProgress)),
+    visible: finalVisible,
+    enterProgress,
+    exitProgress,
   };
+};
+
+// イージング関数のヘルパー
+const applyEasing = (progress: number, easing?: string): number => {
+  switch (easing) {
+    case "ease-in":
+      return progress * progress;
+    case "ease-out":
+      return 1 - Math.pow(1 - progress, 2);
+    case "ease-in-out":
+      return progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+    default:
+      return progress;
+  }
 };
 
 // 座標変換：グラフ座標 → 画面座標（エクスポート解像度基準）
@@ -719,19 +744,42 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
         let fontSize = element.style.fontSize; // フォントサイズベースに変更
         let transform = "";
 
+        // 出現アニメーション
         switch (element.animation?.type) {
           case "typewriter":
             opacity = element.style.opacity;
             break;
           case "fade":
-            opacity = element.style.opacity * animationState.progress;
+            opacity =
+              element.style.opacity * (animationState.enterProgress || animationState.progress);
             break;
           case "scale":
-            fontSize = element.style.fontSize * animationState.progress; // スケールアニメーションもフォントサイズで
+            fontSize =
+              element.style.fontSize * (animationState.enterProgress || animationState.progress);
             break;
           case "slide":
-            translateX = (1 - animationState.progress) * -50;
+            translateX = (1 - (animationState.enterProgress || animationState.progress)) * -50;
             break;
+        }
+
+        // 消去アニメーション
+        if (
+          element.exitAnimation &&
+          element.exitAnimation.type !== "none" &&
+          animationState.exitProgress &&
+          animationState.exitProgress > 0
+        ) {
+          switch (element.exitAnimation.type) {
+            case "fade":
+              opacity = opacity * (1 - animationState.exitProgress);
+              break;
+            case "scale":
+              fontSize = fontSize * (1 - animationState.exitProgress);
+              break;
+            case "slide":
+              translateX = translateX + animationState.exitProgress * 50;
+              break;
+          }
         }
 
         transform = `translate(${screenPos.x + translateX}px, ${screenPos.y}px) ${
@@ -819,20 +867,42 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
         const screenY = exportScreenY * displayScale + displayOffsetY;
 
         let displayText = element.text;
-        let opacity = element.style.opacity * animationState.progress;
+        let opacity = element.style.opacity;
         let translateX = 0;
 
+        // 出現アニメーション
         switch (element.animation?.type) {
           case "typewriter":
-            displayText = getTypewriterText(element.text, animationState.progress);
+            displayText = getTypewriterText(
+              element.text,
+              animationState.enterProgress || animationState.progress
+            );
             opacity = element.style.opacity;
             break;
           case "fade":
-            opacity = element.style.opacity * animationState.progress;
+            opacity =
+              element.style.opacity * (animationState.enterProgress || animationState.progress);
             break;
           case "slide":
-            translateX = (1 - animationState.progress) * -100;
+            translateX = (1 - (animationState.enterProgress || animationState.progress)) * -100;
             break;
+        }
+
+        // 消去アニメーション
+        if (
+          element.exitAnimation &&
+          element.exitAnimation.type !== "none" &&
+          animationState.exitProgress &&
+          animationState.exitProgress > 0
+        ) {
+          switch (element.exitAnimation.type) {
+            case "fade":
+              opacity = opacity * (1 - animationState.exitProgress);
+              break;
+            case "slide":
+              translateX = translateX + animationState.exitProgress * 100;
+              break;
+          }
         }
 
         const transform = `translate(${screenX + translateX}px, ${screenY}px)`;

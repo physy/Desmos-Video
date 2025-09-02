@@ -692,6 +692,14 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
         let itemDuration = 0;
         if ("action" in item && item.action === "startAnimation") {
           itemDuration = (item.args.durationFrames as number) || 1;
+        } else if ("type" in item && (item as FormulaTimelineItem).type === "formula") {
+          // 数式のdisplayDurationを使用
+          const formulaItem = item as FormulaTimelineItem;
+          itemDuration = formulaItem.args.formula.displayDuration || 0.1;
+        } else if ("type" in item && (item as SubtitleTimelineItem).type === "subtitle") {
+          // 字幕のdisplayDurationを使用
+          const subtitleItem = item as SubtitleTimelineItem;
+          itemDuration = subtitleItem.args.subtitle.displayDuration || 0.1;
         } else {
           itemDuration = 0.1;
         }
@@ -709,6 +717,15 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
             let existingDuration = 0;
             if ("action" in existing && existing.action === "startAnimation") {
               existingDuration = (existing.args.durationFrames as number) || 1;
+            } else if ("type" in existing && (existing as FormulaTimelineItem).type === "formula") {
+              const formulaExisting = existing as FormulaTimelineItem;
+              existingDuration = formulaExisting.args.formula.displayDuration || 0.1;
+            } else if (
+              "type" in existing &&
+              (existing as SubtitleTimelineItem).type === "subtitle"
+            ) {
+              const subtitleExisting = existing as SubtitleTimelineItem;
+              existingDuration = subtitleExisting.args.subtitle.displayDuration || 0.1;
             } else {
               existingDuration = 0.1;
             }
@@ -911,7 +928,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 let border = isSelected ? "2px solid #3b82f6" : "2px solid rgba(255,255,255,0.3)";
                 let height = "24px";
                 let top = 3;
-                console.log(item);
+                let opacity = "1";
                 if ("action" in item) {
                   left = (item.frame / duration) * 100;
                   if (item.action === "startAnimation") {
@@ -936,7 +953,15 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 ) {
                   const formulaItem = item as FormulaTimelineItem;
                   left = (formulaItem.frame / duration) * 100;
-                  width = Math.max((0.5 / duration) * 100, 1);
+                  // displayDurationがある場合はその期間、ない場合は最低幅
+                  const displayDuration = formulaItem.args.formula.displayDuration;
+                  if (displayDuration) {
+                    width = (displayDuration / duration) * 100;
+                    opacity = "1"; // 期間限定表示は不透明
+                  } else {
+                    width = Math.max((0.5 / duration) * 100, 1);
+                    opacity = "0.6"; // 無制限表示は半透明
+                  }
                   color = "#8b5cf6"; // purple-500（凡例と同じ）
                   border = isSelected ? "2px solid #3b82f6" : "2px solid #8b5cf6";
                 } else if (
@@ -945,7 +970,15 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                 ) {
                   const subtitleItem = item as SubtitleTimelineItem;
                   left = (subtitleItem.frame / duration) * 100;
-                  width = Math.max((0.5 / duration) * 100, 1);
+                  // displayDurationがある場合はその期間、ない場合は最低幅
+                  const displayDuration = subtitleItem.args.subtitle.displayDuration;
+                  if (displayDuration) {
+                    width = (displayDuration / duration) * 100;
+                    opacity = "1"; // 期間限定表示は不透明
+                  } else {
+                    width = Math.max((0.5 / duration) * 100, 1);
+                    opacity = "0.6"; // 無制限表示は半透明
+                  }
                   color = "#3b82f6"; // blue-500（凡例と同じ）
                   border = isSelected ? "2px solid #3b82f6" : "2px solid #3b82f6";
                 }
@@ -963,6 +996,7 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                       height,
                       backgroundColor: color,
                       border,
+                      opacity,
                     }}
                     onMouseDown={(e) => handleItemMouseDown(item, e)}
                     onClick={(e) => {
@@ -1052,13 +1086,19 @@ export const TimelineControls: React.FC<TimelineControlsProps> = ({
                         : "properties" in item && "type" in item && item.type === "expression"
                         ? `Expression Event at frame ${item.frame} (ドラッグで移動可能)`
                         : "type" in item && (item as FormulaTimelineItem).type === "formula"
-                        ? `Formula at frame ${
-                            (item as FormulaTimelineItem).frame
-                          } (ドラッグで移動可能)`
+                        ? (() => {
+                            const formulaItem = item as FormulaTimelineItem;
+                            const duration = formulaItem.args.formula.displayDuration;
+                            const endFrame = duration ? formulaItem.frame + duration : "∞";
+                            return `Formula: F${formulaItem.frame}〜${endFrame} (ドラッグで移動可能)`;
+                          })()
                         : "type" in item && (item as SubtitleTimelineItem).type === "subtitle"
-                        ? `Subtitle at frame ${
-                            (item as SubtitleTimelineItem).frame
-                          } (ドラッグで移動可能)`
+                        ? (() => {
+                            const subtitleItem = item as SubtitleTimelineItem;
+                            const duration = subtitleItem.args.subtitle.displayDuration;
+                            const endFrame = duration ? subtitleItem.frame + duration : "∞";
+                            return `Subtitle: F${subtitleItem.frame}〜${endFrame} (ドラッグで移動可能)`;
+                          })()
                         : ""
                     }
                   >

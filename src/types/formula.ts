@@ -17,12 +17,18 @@ export interface FormulaElement {
   };
   animation?: {
     type: "typewriter" | "fade" | "slide" | "scale" | "none";
-    duration: number; // フレーム数
-    delay?: number; // フレーム数
+    duration: number; // アニメーション時間（フレーム数）
+    delay?: number; // アニメーション開始遅延（フレーム数）
+    easing?: "linear" | "ease-in" | "ease-out" | "ease-in-out";
+  };
+  exitAnimation?: {
+    type: "fade" | "slide" | "scale" | "none";
+    duration: number; // 消失アニメーション時間（フレーム数）
     easing?: "linear" | "ease-in" | "ease-out" | "ease-in-out";
   };
   visible: boolean;
   frame: number; // このフォーミュラが開始するフレーム
+  displayDuration?: number; // 表示継続時間（フレーム数）。未指定の場合は無限
 }
 
 export interface SubtitleElement {
@@ -43,12 +49,18 @@ export interface SubtitleElement {
   };
   animation?: {
     type: "typewriter" | "fade" | "slide" | "none";
-    duration: number; // フレーム数
-    delay?: number;
+    duration: number; // アニメーション時間（フレーム数）
+    delay?: number; // アニメーション開始遅延（フレーム数）
+    easing?: "linear" | "ease-in" | "ease-out" | "ease-in-out";
+  };
+  exitAnimation?: {
+    type: "fade" | "slide" | "scale" | "none";
+    duration: number; // 消失アニメーション時間（フレーム数）
     easing?: "linear" | "ease-in" | "ease-out" | "ease-in-out";
   };
   visible: boolean;
   frame: number; // この字幕が開始するフレーム
+  displayDuration?: number; // 表示継続時間（フレーム数）。未指定の場合は無限
 }
 
 // アニメーション状態
@@ -56,6 +68,8 @@ export interface AnimationState {
   frame: number;
   progress: number; // 0-1
   visible: boolean;
+  enterProgress?: number; // 出現アニメーションの進行状況 (0-1)
+  exitProgress?: number; // 消去アニメーションの進行状況 (0-1)
 }
 
 // フォーミュラアニメーションのイベント

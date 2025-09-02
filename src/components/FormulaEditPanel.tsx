@@ -35,7 +35,7 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
       content: "\\frac{d}{dx}f(x) = \\lim_{h \\to 0} \\frac{f(x+h) - f(x)}{h}",
       position: { x: 0, y: 0 },
       style: {
-        fontSize: 24,
+        fontSize: 40,
         color: "#000000",
         opacity: 1,
         scale: 1,
@@ -48,18 +48,18 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
       },
       visible: true,
       frame: currentFrame,
+      displayDuration: 120, // デフォルト2秒（60fps想定）
     }),
     [currentFrame]
   );
 
   const getNewSubtitleDefaults = useCallback(
     (): Omit<SubtitleElement, "id"> => ({
-      text: "数式の説明文をここに入力",
+      text: "説明文",
       position: { x: 0.5, y: 0.9 },
       style: {
-        fontSize: 18,
-        color: "#ffffff",
-        backgroundColor: "rgba(0,0,0,0.7)",
+        fontSize: 50,
+        color: "#000",
         opacity: 1,
         fontFamily: "Arial",
         fontWeight: "normal",
@@ -73,6 +73,7 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
       },
       visible: true,
       frame: currentFrame,
+      displayDuration: 180, // デフォルト3秒（60fps想定）
     }),
     [currentFrame]
   );
@@ -158,6 +159,13 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
                 ? element.content.substring(0, 20) + (element.content.length > 20 ? "..." : "")
                 : element.text.substring(0, 20) + (element.text.length > 20 ? "..." : "");
 
+              // 表示期間の計算
+              const startFrame = element.frame;
+              const endFrame = element.displayDuration
+                ? startFrame + element.displayDuration
+                : null;
+              const durationInfo = endFrame ? `F${startFrame}〜${endFrame}` : `F${startFrame}〜∞`;
+
               return (
                 <div
                   key={element.id}
@@ -171,7 +179,7 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="font-medium">
-                        {elementType} (F{element.frame})
+                        {elementType} ({durationInfo})
                       </div>
                       <div className="text-gray-500 truncate">{preview}</div>
                     </div>
@@ -221,14 +229,44 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
             </h4>
 
             {/* 基本設定 */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">開始フレーム</label>
-              <input
-                type="number"
-                value={selectedElement.frame}
-                onChange={(e) => handleUpdateElement({ frame: parseInt(e.target.value) || 0 })}
-                className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
-              />
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">開始フレーム</label>
+                <input
+                  type="number"
+                  value={selectedElement.frame}
+                  onChange={(e) => handleUpdateElement({ frame: parseInt(e.target.value) || 0 })}
+                  className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  表示継続時間（フレーム）
+                </label>
+                <div className="space-y-1">
+                  <input
+                    type="number"
+                    value={selectedElement.displayDuration || ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      handleUpdateElement({
+                        displayDuration: value ? parseInt(value) || undefined : undefined,
+                      });
+                    }}
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                    placeholder="無制限（空白）"
+                    min="1"
+                  />
+                  <div className="text-xs text-gray-500">
+                    {selectedElement.displayDuration
+                      ? `フレーム ${selectedElement.frame} 〜 ${
+                          selectedElement.frame + selectedElement.displayDuration
+                        } まで表示`
+                      : "無制限に表示（手動で非表示にするまで）"}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* コンテンツ編集 */}
@@ -298,36 +336,187 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
             {/* スタイル設定 */}
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">スタイル</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                {/* フォントサイズと色 */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-500">フォントサイズ</label>
+                    <input
+                      type="number"
+                      value={selectedElement.style.fontSize}
+                      onChange={(e) =>
+                        handleUpdateElement({
+                          style: {
+                            ...selectedElement.style,
+                            fontSize: parseInt(e.target.value) || 12,
+                          },
+                        })
+                      }
+                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">色</label>
+                    <input
+                      type="color"
+                      value={selectedElement.style.color}
+                      onChange={(e) =>
+                        handleUpdateElement({
+                          style: { ...selectedElement.style, color: e.target.value },
+                        })
+                      }
+                      className="w-full h-7 border border-gray-300 rounded"
+                    />
+                  </div>
+                </div>
+
+                {/* 透明度 */}
                 <div>
-                  <label className="text-xs text-gray-500">フォントサイズ</label>
+                  <label className="text-xs text-gray-500">
+                    透明度 ({selectedElement.style.opacity})
+                  </label>
                   <input
-                    type="number"
-                    value={selectedElement.style.fontSize}
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={selectedElement.style.opacity}
                     onChange={(e) =>
                       handleUpdateElement({
                         style: {
                           ...selectedElement.style,
-                          fontSize: parseInt(e.target.value) || 12,
+                          opacity: parseFloat(e.target.value),
                         },
                       })
                     }
-                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                    className="w-full"
                   />
                 </div>
+
+                {/* 背景色（任意） */}
                 <div>
-                  <label className="text-xs text-gray-500">色</label>
-                  <input
-                    type="color"
-                    value={selectedElement.style.color}
-                    onChange={(e) =>
-                      handleUpdateElement({
-                        style: { ...selectedElement.style, color: e.target.value },
-                      })
-                    }
-                    className="w-full h-7 border border-gray-300 rounded"
-                  />
+                  <label className="text-xs text-gray-500">背景色（任意）</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="color"
+                      value={selectedElement.style.backgroundColor || "#ffffff"}
+                      onChange={(e) =>
+                        handleUpdateElement({
+                          style: {
+                            ...selectedElement.style,
+                            backgroundColor: e.target.value,
+                          },
+                        })
+                      }
+                      className="w-16 h-7 border border-gray-300 rounded"
+                    />
+                    <button
+                      onClick={() =>
+                        handleUpdateElement({
+                          style: {
+                            ...selectedElement.style,
+                            backgroundColor: undefined,
+                          },
+                        })
+                      }
+                      className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
+                    >
+                      クリア
+                    </button>
+                  </div>
                 </div>
+
+                {/* 回転（数式用） */}
+                {isFormula(selectedElement) && (
+                  <div>
+                    <label className="text-xs text-gray-500">
+                      回転角度 ({selectedElement.style.rotation || 0}°)
+                    </label>
+                    <input
+                      type="range"
+                      min="-180"
+                      max="180"
+                      step="1"
+                      value={selectedElement.style.rotation || 0}
+                      onChange={(e) =>
+                        handleUpdateElement({
+                          style: {
+                            ...selectedElement.style,
+                            rotation: parseInt(e.target.value),
+                          },
+                        })
+                      }
+                      className="w-full"
+                    />
+                  </div>
+                )}
+
+                {/* 字幕専用スタイル */}
+                {isSubtitle(selectedElement) && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs text-gray-500">フォントファミリー</label>
+                        <select
+                          value={selectedElement.style.fontFamily || "Arial"}
+                          onChange={(e) =>
+                            handleUpdateElement({
+                              style: {
+                                ...selectedElement.style,
+                                fontFamily: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                        >
+                          <option value="Arial">Arial</option>
+                          <option value="Georgia">Georgia</option>
+                          <option value="Times New Roman">Times New Roman</option>
+                          <option value="Courier New">Courier New</option>
+                          <option value="Helvetica">Helvetica</option>
+                          <option value="Verdana">Verdana</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">フォント太さ</label>
+                        <select
+                          value={selectedElement.style.fontWeight || "normal"}
+                          onChange={(e) =>
+                            handleUpdateElement({
+                              style: {
+                                ...selectedElement.style,
+                                fontWeight: e.target.value as "normal" | "bold",
+                              },
+                            })
+                          }
+                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                        >
+                          <option value="normal">普通</option>
+                          <option value="bold">太字</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">テキスト配置</label>
+                      <select
+                        value={selectedElement.style.textAlign || "center"}
+                        onChange={(e) =>
+                          handleUpdateElement({
+                            style: {
+                              ...selectedElement.style,
+                              textAlign: e.target.value as "left" | "center" | "right",
+                            },
+                          })
+                        }
+                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                      >
+                        <option value="left">左寄せ</option>
+                        <option value="center">中央寄せ</option>
+                        <option value="right">右寄せ</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -362,6 +551,30 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
                       <option value="fade">フェード</option>
                       <option value="slide">スライド</option>
                       <option value="scale">スケール</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">イージング</label>
+                    <select
+                      value={selectedElement.animation.easing || "ease-out"}
+                      onChange={(e) =>
+                        handleUpdateElement({
+                          animation: {
+                            ...selectedElement.animation!,
+                            easing: e.target.value as
+                              | "linear"
+                              | "ease-in"
+                              | "ease-out"
+                              | "ease-in-out",
+                          },
+                        })
+                      }
+                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                    >
+                      <option value="linear">線形 (linear)</option>
+                      <option value="ease-in">加速 (ease-in)</option>
+                      <option value="ease-out">減速 (ease-out)</option>
+                      <option value="ease-in-out">加減速 (ease-in-out)</option>
                     </select>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -401,6 +614,76 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
                 </div>
               </div>
             )}
+
+            {/* 消去アニメーション設定 */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                消去アニメーション
+              </label>
+              <div className="space-y-2">
+                <div>
+                  <label className="text-xs text-gray-500">タイプ</label>
+                  <select
+                    value={selectedElement.exitAnimation?.type || "fade"}
+                    onChange={(e) =>
+                      handleUpdateElement({
+                        exitAnimation: {
+                          type: e.target.value as "fade" | "slide" | "scale" | "none",
+                          duration: selectedElement.exitAnimation?.duration || 30,
+                          easing: selectedElement.exitAnimation?.easing || "ease-out",
+                        },
+                      })
+                    }
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                  >
+                    <option value="none">なし</option>
+                    <option value="fade">フェード</option>
+                    <option value="slide">スライド</option>
+                    <option value="scale">スケール</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">イージング</label>
+                  <select
+                    value={selectedElement.exitAnimation?.easing || "ease-out"}
+                    onChange={(e) =>
+                      handleUpdateElement({
+                        exitAnimation: {
+                          ...selectedElement.exitAnimation!,
+                          easing: e.target.value as
+                            | "linear"
+                            | "ease-in"
+                            | "ease-out"
+                            | "ease-in-out",
+                        },
+                      })
+                    }
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                  >
+                    <option value="linear">線形 (linear)</option>
+                    <option value="ease-in">加速 (ease-in)</option>
+                    <option value="ease-out">減速 (ease-out)</option>
+                    <option value="ease-in-out">加減速 (ease-in-out)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">継続時間(フレーム)</label>
+                  <input
+                    type="number"
+                    value={selectedElement.exitAnimation?.duration || 30}
+                    onChange={(e) =>
+                      handleUpdateElement({
+                        exitAnimation: {
+                          ...selectedElement.exitAnimation!,
+                          duration: parseInt(e.target.value) || 30,
+                        },
+                      })
+                    }
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                  />
+                </div>
+              </div>
+            </div>
 
             {/* 表示設定 */}
             <div className="flex items-center space-x-4">
