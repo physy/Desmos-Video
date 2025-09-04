@@ -15,6 +15,7 @@ import type { Calculator, GraphingCalculatorOptions } from "./types/desmos";
 import type { TimelineEvent, VideoExportSettings, AnimationProject } from "./types/timeline";
 import type { FormulaElement, SubtitleElement } from "./types/formula";
 import "./App.css";
+import "./styles/desmos-math-fonts.css";
 import { StateEventEditPanel } from "./components/StateEventEditPanel";
 
 // デバッグモードのフラグ（開発時に true にする）

@@ -119,6 +119,25 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
       }
 
       isInitializedRef.current = true;
+
+      // フォントが読み込まれた後にCalculatorにスタイルを適用
+      if (calculatorRef.current) {
+        setTimeout(() => {
+          // フォント読み込み完了を確認してからスタイルを強制適用
+          if (document.fonts) {
+            document.fonts.ready.then(() => {
+              // DOMが更新されるのを待ってからフォントスタイルを再適用
+              requestAnimationFrame(() => {
+                const calculatorElement = containerRef.current?.querySelector(".dcg-container");
+                if (calculatorElement) {
+                  calculatorElement.classList.add("desmos-math-fonts-applied");
+                }
+              });
+            });
+          }
+        }, 100);
+      }
+
       if (onCalculatorReadyRef.current && calculatorRef.current) {
         onCalculatorReadyRef.current(calculatorRef.current);
       }
