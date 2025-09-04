@@ -10,6 +10,7 @@ import { ResizablePanel } from "./components/ResizablePanel";
 import { FormulaEditPanel } from "./components/FormulaEditPanel";
 import { useTimeline } from "./hooks/useTimeline";
 import { useFormulaManager } from "./hooks/useFormulaManager";
+import { useProjectHistory } from "./hooks/useProjectHistory";
 import type { Calculator, GraphingCalculatorOptions } from "./types/desmos";
 import type { TimelineEvent, VideoExportSettings, AnimationProject } from "./types/timeline";
 import type { FormulaElement, SubtitleElement } from "./types/formula";
@@ -72,7 +73,42 @@ function App() {
     metadata: { title: "Desmos Animation", description: "", author: "", tags: [] },
   };
   const [videoSettings, setVideoSettings] = useState<VideoExportSettings>(DEFAULT_VIDEO_SETTINGS);
-  // useTimelineの呼び出し（重複宣言があれば削除）
+
+  // 初期プロジェクト定義
+  const INITIAL_PROJECT: AnimationProject = {
+    timeline: [],
+    stateEvents: [],
+    continuousEvents: [],
+    durationFrames: 300,
+    fps: 30,
+    graphSettings: DEFAULT_GRAPH_SETTINGS,
+    videoExportSettings: DEFAULT_VIDEO_SETTINGS,
+    calculatorOptions: {
+      graphType: "2d",
+    },
+    formulas: [],
+    subtitles: [],
+  };
+
+  // 数式・字幕管理（プロジェクトから独立）
+  const {
+    formulas,
+    subtitles,
+    addFormula,
+    addSubtitle,
+    updateElement,
+    updateElementTime,
+    deleteElement,
+    duplicateElement: duplicateFormulaElement,
+    clearAll: clearAllFormulas,
+    exportData: exportFormulaData,
+    importData: importFormulaData,
+  } = useFormulaManager({
+    initialFormulas: [],
+    initialSubtitles: [],
+  });
+
+  // useTimelineの呼び出し（先に定義）
   const {
     project,
     currentFrame,
@@ -98,23 +134,127 @@ function App() {
     setSelectedEventId,
   } = useTimeline(calculator, calculatorOptions);
 
-  // 数式・字幕管理（プロジェクトから独立）
+  // プロジェクト変更時のコールバック（Undo/Redo/Load時に呼ばれる）
+  const handleProjectChange = useCallback(
+    (newProject: AnimationProject) => {
+      console.log("プロジェクト変更コールバック実行:", newProject);
+
+      // 各状態を抽出
+      const {
+        graphSettings: hGraphSettings,
+        videoExportSettings: hVideoSettings,
+        calculatorOptions: hCalculatorOptions,
+        formulas: hFormulas,
+        subtitles: hSubtitles,
+        ...timelineProject
+      } = newProject;
+
+      // useTimelineのプロジェクトを更新
+      setProject(timelineProject);
+
+      // その他の状態も更新
+      if (hGraphSettings) {
+        setGraphSettings(hGraphSettings);
+      }
+      if (hVideoSettings) {
+        setVideoSettings(hVideoSettings);
+      }
+      if (hCalculatorOptions && hCalculatorOptions.graphType) {
+        setCalculatorOptions({
+          ...hCalculatorOptions,
+          graphType: hCalculatorOptions.graphType,
+        });
+      }
+      if (hFormulas || hSubtitles) {
+        importFormulaData({
+          formulas: hFormulas || [],
+          subtitles: hSubtitles || [],
+        });
+      }
+    },
+    [setProject, importFormulaData]
+  );
+
+  // 履歴管理フック（コールバック付き）
   const {
+    project: historyProject,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    updateProject: updateProjectHistory,
+    applyProject,
+    saveToStorage,
+    loadFromStorage,
+    clearHistory,
+  } = useProjectHistory(INITIAL_PROJECT, handleProjectChange);
+
+  // 初期化時にローカルストレージからプロジェクトを復元（一度のみ）
+  const [hasInitialized, setHasInitialized] = useState(false);
+
+  useEffect(() => {
+    if (!hasInitialized) {
+      const savedProject = loadFromStorage();
+      if (savedProject) {
+        console.log("初期化時にプロジェクトを復元:", savedProject);
+        // 各状態を直接設定（履歴に追加しない）
+        const {
+          graphSettings: hGraphSettings,
+          videoExportSettings: hVideoSettings,
+          calculatorOptions: hCalculatorOptions,
+          formulas: hFormulas,
+          subtitles: hSubtitles,
+          ...timelineProject
+        } = savedProject;
+
+        setProject(timelineProject);
+
+        if (hGraphSettings) {
+          setGraphSettings(hGraphSettings);
+        }
+        if (hVideoSettings) {
+          setVideoSettings(hVideoSettings);
+        }
+        if (hCalculatorOptions && hCalculatorOptions.graphType) {
+          setCalculatorOptions({
+            ...hCalculatorOptions,
+            graphType: hCalculatorOptions.graphType,
+          });
+        }
+        if (hFormulas || hSubtitles) {
+          importFormulaData({
+            formulas: hFormulas || [],
+            subtitles: hSubtitles || [],
+          });
+        }
+      }
+      setHasInitialized(true);
+    }
+  }, [hasInitialized, loadFromStorage, setProject, importFormulaData]);
+
+  // プロジェクトが変更されたときに履歴を更新（初期化時は除く）
+  useEffect(() => {
+    if (hasInitialized) {
+      const fullProject: AnimationProject = {
+        ...project,
+        graphSettings,
+        videoExportSettings: videoSettings,
+        calculatorOptions,
+        formulas,
+        subtitles,
+      };
+      updateProjectHistory(fullProject);
+    }
+  }, [
+    hasInitialized,
+    project,
+    graphSettings,
+    videoSettings,
+    calculatorOptions,
     formulas,
     subtitles,
-    addFormula,
-    addSubtitle,
-    updateElement,
-    updateElementTime,
-    deleteElement,
-    duplicateElement: duplicateFormulaElement,
-    clearAll: clearAllFormulas,
-    exportData: exportFormulaData,
-    importData: importFormulaData,
-  } = useFormulaManager({
-    initialFormulas: [],
-    initialSubtitles: [],
-  });
+    updateProjectHistory,
+  ]);
 
   // プロジェクト読み込み時のみ数式・字幕データを同期
   const [lastLoadedProjectId, setLastLoadedProjectId] = useState<string | null>(null);
@@ -198,7 +338,7 @@ function App() {
   );
 
   const handleSaveProject = useCallback(() => {
-    // AnimationProject型で保存（graphSettings, videoExportSettings, calculatorOptions, formulas, subtitlesも含む）
+    // 現在の状態をプロジェクトとして保存
     const saveObj: AnimationProject = {
       ...project,
       graphSettings,
@@ -207,6 +347,15 @@ function App() {
       formulas,
       subtitles,
     };
+
+    // ローカルストレージにも保存
+    try {
+      saveToStorage();
+    } catch (error) {
+      console.warn("ローカルストレージへの保存に失敗:", error);
+    }
+
+    // ファイルとしてダウンロード
     const dataStr = JSON.stringify(saveObj, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -216,7 +365,15 @@ function App() {
     a.click();
     URL.revokeObjectURL(url);
     setFileMenuOpen(false);
-  }, [project, graphSettings, videoSettings, calculatorOptions, formulas, subtitles]);
+  }, [
+    project,
+    graphSettings,
+    videoSettings,
+    calculatorOptions,
+    formulas,
+    subtitles,
+    saveToStorage,
+  ]);
 
   const handleLoadProject = useCallback(() => {
     const input = document.createElement("input");
@@ -229,36 +386,14 @@ function App() {
       reader.onload = (ev) => {
         try {
           const json: AnimationProject = JSON.parse(ev.target?.result as string);
-          // graphSettingsも復元
-          if (json.graphSettings) {
-            setGraphSettings(json.graphSettings);
-          }
-          // videoExportSettingsも復元
-          if (json.videoExportSettings) {
-            setVideoSettings(json.videoExportSettings);
-          }
 
-          // calculatorOptionsも復元
-          if (json.calculatorOptions) {
-            const oldGraphType = calculatorOptions.graphType;
-            const newOptions = {
-              ...json.calculatorOptions,
-              graphType: json.calculatorOptions.graphType || ("2d" as const),
-            };
-            setCalculatorOptions(newOptions);
+          // 履歴管理を通してプロジェクトを適用
+          applyProject(json);
 
-            // グラフタイプが変更された場合、calculator再作成
-            if (newOptions.graphType !== oldGraphType) {
-              handleGraphTypeChange(newOptions.graphType);
-            }
-          } else {
-            // calculatorOptionsが保存されていない場合はデフォルト値を設定
-            const defaultOptions = { graphType: "2d" as const };
-            setCalculatorOptions(defaultOptions);
-          }
+          // 履歴をクリア（新しいプロジェクトとして扱う）
+          clearHistory();
 
-          // プロジェクトデータを設定（数式・字幕データは自動同期される）
-          setProject(json);
+          console.log("プロジェクトを読み込みました:", json);
         } catch (err) {
           alert("読み込みに失敗しました: " + err);
         }
@@ -267,15 +402,31 @@ function App() {
     };
     input.click();
     setFileMenuOpen(false);
-  }, [
-    setProject,
-    setGraphSettings,
-    setVideoSettings,
-    calculatorOptions.graphType,
-    handleGraphTypeChange,
-  ]);
+  }, [applyProject, clearHistory]);
 
-  const fileMenuItems = [
+  const fileMenuItems: Array<
+    | { label: string; onClick: () => void; className?: string; disabled?: boolean }
+    | { separator: true }
+  > = [
+    {
+      label: "元に戻す (Ctrl+Z)",
+      onClick: () => {
+        undo();
+        setFileMenuOpen(false);
+      },
+      className: "hover:bg-gray-50",
+      disabled: !canUndo,
+    },
+    {
+      label: "やり直し (Ctrl+Y)",
+      onClick: () => {
+        redo();
+        setFileMenuOpen(false);
+      },
+      className: "hover:bg-gray-50",
+      disabled: !canRedo,
+    },
+    { separator: true }, // セパレーター
     {
       label: "保存",
       onClick: handleSaveProject,
@@ -550,15 +701,33 @@ function App() {
                   id="file-menu-dropdown"
                   className="absolute left-0 mt-1 w-44 bg-white border border-gray-200 rounded shadow-lg z-10"
                 >
-                  {fileMenuItems.map((item, idx) => (
-                    <button
-                      key={item.label + idx}
-                      onClick={item.onClick}
-                      className={`w-full text-left px-4 py-2 text-sm text-gray-700 ${item.className} hover:bg-gray-100`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
+                  {fileMenuItems.map((item, idx) => {
+                    if ("separator" in item && item.separator) {
+                      return (
+                        <div key={`separator-${idx}`} className="border-t border-gray-200 my-1" />
+                      );
+                    }
+                    const menuItem = item as {
+                      label: string;
+                      onClick: () => void;
+                      className?: string;
+                      disabled?: boolean;
+                    };
+                    return (
+                      <button
+                        key={menuItem.label + idx}
+                        onClick={menuItem.onClick}
+                        disabled={menuItem.disabled}
+                        className={`w-full text-left px-4 py-2 text-sm ${
+                          menuItem.disabled
+                            ? "text-gray-400 cursor-not-allowed"
+                            : "text-gray-700 hover:bg-gray-100"
+                        } ${menuItem.className || ""}`}
+                      >
+                        {menuItem.label}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
