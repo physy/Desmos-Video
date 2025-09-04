@@ -21,8 +21,54 @@ import { StateEventEditPanel } from "./components/StateEventEditPanel";
 const DEBUG_MODE = false;
 
 function App() {
-  // ファイルメニューのドロップダウン表示状態
-  const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  // メニューシステムの型定義
+  interface MenuItem {
+    label: string;
+    onClick?: () => void;
+    className?: string;
+    disabled?: boolean;
+    shortcut?: string;
+    checked?: boolean;
+    submenus?: MenuItem[];
+  }
+
+  interface MenuSeparator {
+    type: "separator";
+  }
+
+  type MenuItemOrSeparator = MenuItem | MenuSeparator;
+
+  // メニューの表示状態管理（複数メニューに対応）
+  const [openMenus, setOpenMenus] = useState<{ [menuKey: string]: boolean }>({});
+  const [openSubmenus, setOpenSubmenus] = useState<{ [submenuKey: string]: boolean }>({});
+
+  // メニュー操作関数
+  const toggleMenu = (menuKey: string) => {
+    setOpenMenus((prev) => {
+      // 他のメニューを閉じて、指定されたメニューのみ開閉
+      const newState: { [key: string]: boolean } = {};
+      Object.keys(prev).forEach((key) => {
+        newState[key] = false;
+      });
+      newState[menuKey] = !prev[menuKey];
+      return newState;
+    });
+    // サブメニューもリセット
+    setOpenSubmenus({});
+  };
+
+  const closeAllMenus = () => {
+    setOpenMenus({});
+    setOpenSubmenus({});
+  };
+
+  const toggleSubmenu = (submenuKey: string) => {
+    setOpenSubmenus((prev) => ({
+      ...prev,
+      [submenuKey]: !prev[submenuKey],
+    }));
+  };
+
   // calculatorのuseState宣言を先に（重複宣言があれば削除）
   const [calculator, setCalculator] = useState<Calculator | null>(null);
   // GraphSettingsの状態
@@ -364,7 +410,7 @@ function App() {
     a.download = `${videoSettings.metadata.title || "desmos_project"}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    setFileMenuOpen(false);
+    closeAllMenus();
   }, [
     project,
     graphSettings,
@@ -401,109 +447,347 @@ function App() {
       reader.readAsText(file);
     };
     input.click();
-    setFileMenuOpen(false);
+    closeAllMenus();
   }, [applyProject, clearHistory]);
 
-  const fileMenuItems: Array<
-    | { label: string; onClick: () => void; className?: string; disabled?: boolean }
-    | { separator: true }
-  > = [
-    {
-      label: "元に戻す (Ctrl+Z)",
-      onClick: () => {
-        undo();
-        setFileMenuOpen(false);
+  // 新規プロジェクト作成関数
+  const createNewProject = useCallback(() => {
+    const initialProject: AnimationProject = {
+      timeline: [],
+      stateEvents: [],
+      continuousEvents: [],
+      durationFrames: 300, // 10秒（30fps）
+      fps: 30,
+      graphSettings: {
+        axisLineWidth: 1.5,
+        axisLineOffset: 0.25,
+        axisOpacity: 0.9,
+        curveOpacity: 0.7,
+        disableFill: false,
+        graphLineWidth: 2.5,
+        highlight: false,
+        labelHangingColor: "rgba(150,150,150,1)",
+        labelSize: 14,
+        lastChangedAxis: "x",
+        majorAxisOpacity: 0.4,
+        minorAxisOpacity: 0.12,
+        pixelsPerLabel: 80,
+        pointLineWidth: 9,
+        squareAxes: false,
       },
-      className: "hover:bg-gray-50",
-      disabled: !canUndo,
-    },
-    {
-      label: "やり直し (Ctrl+Y)",
-      onClick: () => {
-        redo();
-        setFileMenuOpen(false);
+      videoExportSettings: {
+        durationFrames: 300,
+        fps: 30,
+        resolution: {
+          width: 1920,
+          height: 1080,
+          preset: "1080p",
+        },
+        quality: { bitrate: 5000, preset: "standard" },
+        format: { container: "mp4", codec: "h264" },
+        advanced: {
+          targetPixelRatio: 1,
+          backgroundColor: "#ffffff",
+          antialias: true,
+          motionBlur: false,
+          frameInterpolation: false,
+        },
+        metadata: { title: "Desmos Animation", description: "", author: "", tags: [] },
       },
-      className: "hover:bg-gray-50",
-      disabled: !canRedo,
-    },
-    { separator: true }, // セパレーター
-    {
-      label: "保存",
-      onClick: handleSaveProject,
-      className: "hover:bg-blue-50",
-    },
-    {
-      label: "読み込み",
-      onClick: handleLoadProject,
-      className: "hover:bg-blue-50",
-    },
-    {
-      label: "Stateキャプチャ",
-      onClick: () => {
-        handleCaptureState();
-        setFileMenuOpen(false);
+      calculatorOptions: {
+        keypad: false,
+        expressions: true,
+        settingsMenu: true,
+        expressionsTopbar: true,
+        zoomButtons: true,
+        showResetButtonOnGraphpaper: true,
+        graphType: "2d" as const,
       },
-    },
-    {
-      label: "チェックポイント",
-      onClick: () => {
-        handleCreateCheckpoint();
-        setFileMenuOpen(false);
-      },
-    },
-    {
-      label: "キャッシュクリア",
-      onClick: () => {
-        clearCache();
-        setFileMenuOpen(false);
-      },
-    },
-    ...(DEBUG_MODE
-      ? [
-          {
-            label: "Debug",
-            onClick: () => {
-              handleShowDebugInfo();
-              setFileMenuOpen(false);
-            },
-            className: "hover:bg-gray-100",
+      formulas: [],
+      subtitles: [],
+    };
+
+    // プロジェクトをリセット
+    setProject(initialProject);
+
+    // UI状態もリセット
+    setSelectedFormulaElementId(null);
+    setSelectedElementId(null);
+    setSelectedElementType(null);
+    seekTo(0);
+
+    // 履歴をクリア
+    clearHistory();
+  }, [
+    setProject,
+    clearHistory,
+    seekTo,
+    setSelectedFormulaElementId,
+    setSelectedElementId,
+    setSelectedElementType,
+  ]);
+
+  // 新しいメニュー構造定義
+  const menuStructure = {
+    file: {
+      label: "ファイル",
+      items: [
+        {
+          label: "新規プロジェクト",
+          onClick: () => {
+            if (confirm("現在のプロジェクトを破棄して新規作成しますか？")) {
+              createNewProject();
+              closeAllMenus();
+            }
           },
-          {
-            label: "2s Debug",
-            onClick: async () => {
-              console.log("=== StateManagerデバッグ ===");
-              const debugInfo = getDebugInfo();
-              console.log("Debug info:", debugInfo);
-              try {
-                await seekTo(1.9);
-                setTimeout(async () => {
-                  console.log("State at 1.9s:", calculator?.getExpressions());
-                  await seekTo(2.1);
-                  setTimeout(() => {
-                    console.log("State at 2.1s:", calculator?.getExpressions());
-                  }, 100);
-                }, 100);
-              } catch (e) {
-                console.error("Error during state comparison:", e);
-              }
-              setFileMenuOpen(false);
-            },
+          shortcut: "Ctrl+N",
+        },
+        { type: "separator" as const },
+        {
+          label: "保存",
+          onClick: () => {
+            handleSaveProject();
+            closeAllMenus();
           },
-        ]
-      : []),
-  ];
+          shortcut: "Ctrl+S",
+        },
+        {
+          label: "読み込み",
+          onClick: () => {
+            handleLoadProject();
+            closeAllMenus();
+          },
+          shortcut: "Ctrl+O",
+        },
+        { type: "separator" as const },
+        {
+          label: "状態キャプチャ",
+          onClick: () => {
+            handleCaptureState();
+            closeAllMenus();
+          },
+        },
+        {
+          label: "チェックポイント",
+          onClick: () => {
+            handleCreateCheckpoint();
+            closeAllMenus();
+          },
+        },
+        {
+          label: "キャッシュクリア",
+          onClick: () => {
+            clearCache();
+            closeAllMenus();
+          },
+        },
+        ...(DEBUG_MODE
+          ? [
+              { type: "separator" as const },
+              {
+                label: "デバッグ情報表示",
+                onClick: () => {
+                  handleShowDebugInfo();
+                  closeAllMenus();
+                },
+              },
+              {
+                label: "詳細デバッグ",
+                onClick: async () => {
+                  console.log("=== StateManagerデバッグ ===");
+                  const debugInfo = getDebugInfo();
+                  console.log("Debug info:", debugInfo);
+                  try {
+                    await seekTo(1.9);
+                    setTimeout(async () => {
+                      console.log("State at 1.9s:", calculator?.getExpressions());
+                      await seekTo(2.1);
+                      setTimeout(() => {
+                        console.log("State at 2.1s:", calculator?.getExpressions());
+                      }, 100);
+                    }, 100);
+                  } catch (e) {
+                    console.error("Error during state comparison:", e);
+                  }
+                  closeAllMenus();
+                },
+              },
+            ]
+          : []),
+      ],
+    },
+    edit: {
+      label: "編集",
+      items: [
+        {
+          label: "元に戻す",
+          onClick: () => {
+            undo();
+            closeAllMenus();
+          },
+          disabled: !canUndo,
+          shortcut: "Ctrl+Z",
+        },
+        {
+          label: "やり直し",
+          onClick: () => {
+            redo();
+            closeAllMenus();
+          },
+          disabled: !canRedo,
+          shortcut: "Ctrl+Y",
+        },
+        { type: "separator" as const },
+        {
+          label: "数式を追加",
+          onClick: () => {
+            addFormula({
+              content: "y = x",
+              position: { x: 0, y: 0 },
+              style: {
+                fontSize: 16,
+                color: "#c74440",
+                opacity: 1,
+                scale: 1,
+              },
+              visible: true,
+              frame: currentFrame,
+              displayDuration: 60,
+            });
+            closeAllMenus();
+          },
+        },
+        {
+          label: "字幕を追加",
+          onClick: () => {
+            addSubtitle({
+              text: "新しい字幕",
+              position: { x: 0.5, y: 0.1 },
+              style: {
+                fontSize: 24,
+                color: "#000000",
+                opacity: 1,
+              },
+              visible: true,
+              frame: currentFrame,
+              displayDuration: 90,
+            });
+            closeAllMenus();
+          },
+        },
+      ],
+    },
+    help: {
+      label: "ヘルプ",
+      items: [
+        {
+          label: "バージョン情報",
+          onClick: () => {
+            alert("Desmos Video Creator v2.0");
+            closeAllMenus();
+          },
+        },
+      ],
+    },
+    tools: {
+      label: "ツール",
+      items: [
+        {
+          label: "アニメーション再生",
+          onClick: () => {
+            if (!isPlaying) play();
+            closeAllMenus();
+          },
+          shortcut: "Space",
+        },
+        {
+          label: "アニメーション停止",
+          onClick: () => {
+            if (isPlaying) pause();
+            closeAllMenus();
+          },
+        },
+        { type: "separator" as const },
+        {
+          label: "フレーム移動",
+          submenus: [
+            {
+              label: "前のフレーム",
+              onClick: () => {
+                seekTo(Math.max(0, currentFrame - 1));
+                closeAllMenus();
+              },
+              shortcut: "←",
+            },
+            {
+              label: "次のフレーム",
+              onClick: () => {
+                seekTo(currentFrame + 1);
+                closeAllMenus();
+              },
+              shortcut: "→",
+            },
+          ],
+        },
+      ],
+    },
+    view: {
+      label: "表示",
+      items: [
+        {
+          label: "タイムライン",
+          onClick: () => {
+            setActiveTab("timeline");
+            closeAllMenus();
+          },
+        },
+        {
+          label: "イベント編集",
+          onClick: () => {
+            setActiveTab("events");
+            closeAllMenus();
+          },
+        },
+        {
+          label: "状態管理",
+          onClick: () => {
+            setActiveTab("state");
+            closeAllMenus();
+          },
+        },
+        {
+          label: "フォーミュラ編集",
+          onClick: () => {
+            setActiveTab("formula");
+            closeAllMenus();
+          },
+        },
+        {
+          label: "エクスポート",
+          onClick: () => {
+            setActiveTab("export");
+            closeAllMenus();
+          },
+        },
+      ],
+    },
+  };
+
   // メニュー外クリックで閉じる
   useEffect(() => {
-    if (!fileMenuOpen) return;
+    const hasOpenMenus = Object.values(openMenus).some((isOpen) => isOpen);
+    if (!hasOpenMenus) return;
+
     const handleClick = (e: MouseEvent) => {
-      const menu = document.getElementById("file-menu-dropdown");
+      const menu = document.querySelector("[data-menu-dropdown]");
       if (menu && !menu.contains(e.target as Node)) {
-        setFileMenuOpen(false);
+        closeAllMenus();
       }
     };
+
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [fileMenuOpen]);
+  }, [openMenus]);
   // グラフ表示/プレビュー表示のタブ状態
   const [graphViewTab, setGraphViewTab] = useState<"graph" | "preview">("graph");
   const [activeTab, setActiveTab] = useState<
@@ -689,53 +973,107 @@ function App() {
             <div className="menu-item relative mr-2">
               <button
                 className="font-semibold text-gray-700 hover:text-blue-600 focus:outline-none px-2 py-1 rounded"
-                onClick={() => setFileMenuOpen((open) => !open)}
+                onClick={() => toggleMenu("file")}
                 aria-haspopup="true"
-                aria-expanded={fileMenuOpen}
+                aria-expanded={openMenus.file || false}
               >
                 ファイル
               </button>
-              {/* ドロップダウンメニュー（クリックで表示） */}
-              {fileMenuOpen && (
+              {/* ドロップダウンメニュー（新しいメニューシステム） */}
+              {openMenus.file && (
                 <div
-                  id="file-menu-dropdown"
-                  className="absolute left-0 mt-1 w-44 bg-white border border-gray-200 rounded shadow-lg z-10"
+                  data-menu-dropdown
+                  className="absolute left-0 mt-1 w-48 bg-white border border-gray-200 rounded shadow-lg z-10"
                 >
-                  {fileMenuItems.map((item, idx) => {
-                    if ("separator" in item && item.separator) {
-                      return (
-                        <div key={`separator-${idx}`} className="border-t border-gray-200 my-1" />
-                      );
+                  {menuStructure.file.items.map((item, idx) => {
+                    if ("type" in item && item.type === "separator") {
+                      return <hr key={idx} className="border-gray-200 my-1" />;
                     }
-                    const menuItem = item as {
-                      label: string;
-                      onClick: () => void;
-                      className?: string;
-                      disabled?: boolean;
-                    };
+
+                    const menuItem = item as MenuItem;
+
                     return (
                       <button
-                        key={menuItem.label + idx}
-                        onClick={menuItem.onClick}
+                        key={idx}
+                        className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center justify-between ${
+                          menuItem.disabled ? "text-gray-400 cursor-not-allowed" : "text-gray-700"
+                        } ${menuItem.checked ? "bg-blue-50 text-blue-600" : ""}`}
+                        onClick={() => {
+                          if (!menuItem.disabled && menuItem.onClick) {
+                            menuItem.onClick();
+                          }
+                        }}
                         disabled={menuItem.disabled}
-                        className={`w-full text-left px-4 py-2 text-sm ${
-                          menuItem.disabled
-                            ? "text-gray-400 cursor-not-allowed"
-                            : "text-gray-700 hover:bg-gray-100"
-                        } ${menuItem.className || ""}`}
                       >
-                        {menuItem.label}
+                        <span>
+                          {menuItem.checked && "✓ "}
+                          {menuItem.label}
+                        </span>
+                        {menuItem.shortcut && (
+                          <span className="text-xs text-gray-400 ml-2">{menuItem.shortcut}</span>
+                        )}
                       </button>
                     );
                   })}
                 </div>
               )}
             </div>
-            <div className="menu-item relative mr-2">
-              <button className="font-semibold text-gray-700 hover:text-blue-600 px-2 py-1 rounded">
-                ヘルプ
-              </button>
-            </div>
+            {/* 他のメニュー項目 */}
+            {Object.entries(menuStructure)
+              .filter(([key]) => key !== "file")
+              .map(([menuKey, menu]) => (
+                <div key={menuKey} className="menu-item relative mr-2">
+                  <button
+                    className="font-semibold text-gray-700 hover:text-blue-600 focus:outline-none px-2 py-1 rounded"
+                    onClick={() => toggleMenu(menuKey)}
+                    aria-haspopup="true"
+                    aria-expanded={openMenus[menuKey] || false}
+                  >
+                    {menu.label}
+                  </button>
+                  {openMenus[menuKey] && (
+                    <div
+                      data-menu-dropdown
+                      className="absolute left-0 mt-1 w-48 bg-white border border-gray-200 rounded shadow-lg z-10"
+                    >
+                      {menu.items.map((item, idx) => {
+                        if ("type" in item && item.type === "separator") {
+                          return <hr key={idx} className="border-gray-200 my-1" />;
+                        }
+
+                        const menuItem = item as MenuItem;
+
+                        return (
+                          <button
+                            key={idx}
+                            className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center justify-between ${
+                              menuItem.disabled
+                                ? "text-gray-400 cursor-not-allowed"
+                                : "text-gray-700"
+                            } ${menuItem.checked ? "bg-blue-50 text-blue-600" : ""}`}
+                            onClick={() => {
+                              if (!menuItem.disabled && menuItem.onClick) {
+                                menuItem.onClick();
+                              }
+                            }}
+                            disabled={menuItem.disabled}
+                          >
+                            <span>
+                              {menuItem.checked && "✓ "}
+                              {menuItem.label}
+                            </span>
+                            {menuItem.shortcut && (
+                              <span className="text-xs text-gray-400 ml-2">
+                                {menuItem.shortcut}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
           </div>
         </div>
       </header>
