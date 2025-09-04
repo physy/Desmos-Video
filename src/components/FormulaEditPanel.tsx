@@ -36,15 +36,26 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
       position: { x: 0, y: 0 },
       style: {
         fontSize: 40,
-        color: "#000000",
+        color: "#cccccc",
         opacity: 1,
         scale: 1,
       },
       animation: {
-        type: "typewriter",
-        duration: 60,
+        type: "draw",
+        duration: 30,
         delay: 0,
         easing: "ease-out",
+        drawOptions: {
+          sequentialChars: true,
+          strokeDuration: 0.9,
+          fillDuration: 0.1,
+          overlapRatio: 0.7,
+        },
+      },
+      exitAnimation: {
+        type: "fade",
+        duration: 10,
+        easing: "linear",
       },
       visible: true,
       frame: currentFrame,
@@ -67,13 +78,18 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
       },
       animation: {
         type: "fade",
-        duration: 30,
+        duration: 10,
         delay: 0,
         easing: "ease-out",
       },
+      exitAnimation: {
+        type: "fade",
+        duration: 10,
+        easing: "linear",
+      },
       visible: true,
       frame: currentFrame,
-      displayDuration: 180, // デフォルト3秒（60fps想定）
+      displayDuration: 120, // デフォルト3秒（60fps想定）
     }),
     [currentFrame]
   );
@@ -469,6 +485,11 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
                           }
                           className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
                         >
+                          <option value="sans-serif">sans-serif</option>
+                          <option value="serif">serif</option>
+                          <option value="monospace">monospace</option>
+                          <option value="cursive">cursive</option>
+                          <option value="fantasy">fantasy</option>
                           <option value="Arial">Arial</option>
                           <option value="Georgia">Georgia</option>
                           <option value="Times New Roman">Times New Roman</option>
@@ -521,7 +542,7 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
             </div>
 
             {/* アニメーション設定 */}
-            {selectedElement.animation && (
+            {selectedElement.animation && isFormula(selectedElement) && (
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
                   アニメーション
@@ -535,22 +556,17 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
                         handleUpdateElement({
                           animation: {
                             ...selectedElement.animation!,
-                            type: e.target.value as
-                              | "typewriter"
-                              | "fade"
-                              | "slide"
-                              | "scale"
-                              | "none",
+                            type: e.target.value as "fade" | "slide" | "scale" | "draw" | "none",
                           },
                         })
                       }
                       className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
                     >
                       <option value="none">なし</option>
-                      <option value="typewriter">タイプライター</option>
                       <option value="fade">フェード</option>
                       <option value="slide">スライド</option>
                       <option value="scale">スケール</option>
+                      <option value="draw">描画</option>
                     </select>
                   </div>
                   <div>
@@ -577,6 +593,278 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
                       <option value="ease-in-out">加減速 (ease-in-out)</option>
                     </select>
                   </div>
+
+                  {/* 描画アニメーション専用オプション */}
+                  {selectedElement.animation?.type === "draw" && (
+                    <div className="space-y-2 pt-2 border-t border-gray-200">
+                      <div>
+                        <label className="flex items-center text-xs">
+                          <input
+                            type="checkbox"
+                            checked={
+                              selectedElement.animation.type === "draw"
+                                ? selectedElement.animation.drawOptions?.sequentialChars ?? true
+                                : true
+                            }
+                            onChange={(e) =>
+                              handleUpdateElement({
+                                animation: {
+                                  ...selectedElement.animation!,
+                                  type: "draw",
+                                  drawOptions: {
+                                    sequentialChars: e.target.checked,
+                                    strokeDuration:
+                                      selectedElement.animation?.type === "draw"
+                                        ? selectedElement.animation.drawOptions?.strokeDuration ??
+                                          0.6
+                                        : 0.6,
+                                    fillDuration:
+                                      selectedElement.animation?.type === "draw"
+                                        ? selectedElement.animation.drawOptions?.fillDuration ?? 0.4
+                                        : 0.4,
+                                  },
+                                },
+                              })
+                            }
+                            className="mr-2"
+                          />
+                          文字を順番に表示
+                        </label>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">輪郭描画期間 (比率)</label>
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="0.9"
+                          step="0.1"
+                          value={
+                            selectedElement.animation?.type === "draw"
+                              ? selectedElement.animation.drawOptions?.strokeDuration ?? 0.6
+                              : 0.6
+                          }
+                          onChange={(e) =>
+                            handleUpdateElement({
+                              animation: {
+                                ...selectedElement.animation!,
+                                type: "draw",
+                                drawOptions: {
+                                  sequentialChars:
+                                    selectedElement.animation?.type === "draw"
+                                      ? selectedElement.animation.drawOptions?.sequentialChars ??
+                                        true
+                                      : true,
+                                  strokeDuration: parseFloat(e.target.value),
+                                  fillDuration:
+                                    selectedElement.animation?.type === "draw"
+                                      ? selectedElement.animation.drawOptions?.fillDuration ?? 0.4
+                                      : 0.4,
+                                },
+                              },
+                            })
+                          }
+                          className="w-full"
+                        />
+                        <div className="text-xs text-gray-400">
+                          {(
+                            (selectedElement.animation?.type === "draw"
+                              ? selectedElement.animation.drawOptions?.strokeDuration ?? 0.6
+                              : 0.6) * 100
+                          ).toFixed(0)}
+                          %
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">塗り復元期間 (比率)</label>
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="0.9"
+                          step="0.1"
+                          value={
+                            selectedElement.animation?.type === "draw"
+                              ? selectedElement.animation.drawOptions?.fillDuration ?? 0.4
+                              : 0.4
+                          }
+                          onChange={(e) =>
+                            handleUpdateElement({
+                              animation: {
+                                ...selectedElement.animation!,
+                                type: "draw",
+                                drawOptions: {
+                                  sequentialChars:
+                                    selectedElement.animation?.type === "draw"
+                                      ? selectedElement.animation.drawOptions?.sequentialChars ??
+                                        true
+                                      : true,
+                                  strokeDuration:
+                                    selectedElement.animation?.type === "draw"
+                                      ? selectedElement.animation.drawOptions?.strokeDuration ?? 0.6
+                                      : 0.6,
+                                  fillDuration: parseFloat(e.target.value),
+                                },
+                              },
+                            })
+                          }
+                          className="w-full"
+                        />
+                        <div className="text-xs text-gray-400">
+                          {(
+                            (selectedElement.animation?.type === "draw"
+                              ? selectedElement.animation.drawOptions?.fillDuration ?? 0.4
+                              : 0.4) * 100
+                          ).toFixed(0)}
+                          %
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">文字重複率 (比率)</label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="0.8"
+                          step="0.1"
+                          value={
+                            selectedElement.animation?.type === "draw"
+                              ? selectedElement.animation.drawOptions?.overlapRatio ?? 0.3
+                              : 0.3
+                          }
+                          onChange={(e) =>
+                            handleUpdateElement({
+                              animation: {
+                                ...selectedElement.animation!,
+                                type: "draw",
+                                drawOptions: {
+                                  sequentialChars:
+                                    selectedElement.animation?.type === "draw"
+                                      ? selectedElement.animation.drawOptions?.sequentialChars ??
+                                        true
+                                      : true,
+                                  strokeDuration:
+                                    selectedElement.animation?.type === "draw"
+                                      ? selectedElement.animation.drawOptions?.strokeDuration ?? 0.6
+                                      : 0.6,
+                                  fillDuration:
+                                    selectedElement.animation?.type === "draw"
+                                      ? selectedElement.animation.drawOptions?.fillDuration ?? 0.4
+                                      : 0.4,
+                                  overlapRatio: parseFloat(e.target.value),
+                                },
+                              },
+                            })
+                          }
+                          className="w-full"
+                        />
+                        <div className="text-xs text-gray-400">
+                          {(
+                            (selectedElement.animation?.type === "draw"
+                              ? selectedElement.animation.drawOptions?.overlapRatio ?? 0.3
+                              : 0.3) * 100
+                          ).toFixed(0)}
+                          % 重複（前文字の
+                          {(
+                            100 -
+                            (selectedElement.animation?.type === "draw"
+                              ? selectedElement.animation.drawOptions?.overlapRatio ?? 0.3
+                              : 0.3) *
+                              100
+                          ).toFixed(0)}
+                          %完了時点で次文字開始）
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-gray-500">継続時間(フレーム)</label>
+                      <input
+                        type="number"
+                        value={selectedElement.animation.duration}
+                        onChange={(e) =>
+                          handleUpdateElement({
+                            animation: {
+                              ...selectedElement.animation!,
+                              duration: parseInt(e.target.value) || 1,
+                            },
+                          })
+                        }
+                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">遅延(フレーム)</label>
+                      <input
+                        type="number"
+                        value={selectedElement.animation.delay || 0}
+                        onChange={(e) =>
+                          handleUpdateElement({
+                            animation: {
+                              ...selectedElement.animation!,
+                              delay: parseInt(e.target.value) || 0,
+                            },
+                          })
+                        }
+                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {selectedElement.animation && isSubtitle(selectedElement) && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  アニメーション
+                </label>
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-xs text-gray-500">タイプ</label>
+                    <select
+                      value={selectedElement.animation.type}
+                      onChange={(e) =>
+                        handleUpdateElement({
+                          animation: {
+                            ...selectedElement.animation!,
+                            type: e.target.value as "typewriter" | "fade" | "slide" | "none",
+                          },
+                        })
+                      }
+                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                    >
+                      <option value="none">なし</option>
+                      <option value="typewriter">タイプライター</option>
+                      <option value="fade">フェード</option>
+                      <option value="slide">スライド</option>
+                      <option value="draw">描画</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">イージング</label>
+                    <select
+                      value={selectedElement.animation.easing || "ease-out"}
+                      onChange={(e) =>
+                        handleUpdateElement({
+                          animation: {
+                            ...selectedElement.animation!,
+                            easing: e.target.value as
+                              | "linear"
+                              | "ease-in"
+                              | "ease-out"
+                              | "ease-in-out",
+                          },
+                        })
+                      }
+                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                    >
+                      <option value="linear">線形 (linear)</option>
+                      <option value="ease-in">加速 (ease-in)</option>
+                      <option value="ease-out">減速 (ease-out)</option>
+                      <option value="ease-in-out">加減速 (ease-in-out)</option>
+                    </select>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-xs text-gray-500">継続時間(フレーム)</label>

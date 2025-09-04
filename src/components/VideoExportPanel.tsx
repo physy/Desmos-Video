@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import type { VideoExportSettings } from "../types/timeline";
 import type { Calculator } from "../types/desmos";
 import type { StateManager } from "../utils/stateManager";
+import type { FormulaElement, SubtitleElement } from "../types/formula";
 import { createFFmpeg } from "@ffmpeg/ffmpeg";
+import { renderOverlayToCanvas } from "./OverlayRenderer";
 
 export interface VideoExportPanelProps {
   videoSettings?: VideoExportSettings | null;
@@ -12,6 +14,9 @@ export interface VideoExportPanelProps {
   onSettingsChange?: (settings: VideoExportSettings) => void;
   stateManager?: StateManager | null;
   calculator?: Calculator | null;
+  // 数式・字幕データ
+  formulas?: FormulaElement[];
+  subtitles?: SubtitleElement[];
 }
 
 // プリセット解像度
@@ -41,9 +46,11 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
   onSettingsChange,
   stateManager,
   calculator,
+  formulas = [],
+  subtitles = [],
 }) => {
-  // frame→秒変換関数
-  const frameToSeconds = (frame: number) => (fps ? frame / fps : frame / 30);
+  // frame→秒変換関数（useCallbackで安定化）
+  const frameToSeconds = useCallback((frame: number) => (fps ? frame / fps : frame / 30), [fps]);
   const [settings, setSettings] = useState<VideoExportSettings>(() => {
     // 外部から渡された設定があればそれを使用、なければフルHD(1080p)で初期化
     const defaultSettings: VideoExportSettings = {
@@ -150,86 +157,110 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
     }
   }, [videoSettings]);
 
-  // 設定変更ハンドラー
-  const handleSettingsChange = (updates: Partial<VideoExportSettings>) => {
-    // fpsやdurationFramesの依存関係を考慮
-    const defaultAdvanced = {
-      targetPixelRatio: 0.5,
-      backgroundColor: "#ffffff",
-      antialias: true,
-      motionBlur: false,
-      frameInterpolation: false,
-    };
-    const defaultResolution = {
-      width: 1920,
-      height: 1080,
-      preset: "1080p",
-    };
-    const defaultQuality = {
-      bitrate: 5000,
-      preset: "standard",
-    };
-    const defaultFormat = {
-      container: "mp4",
-      codec: "h264",
-    };
-    const defaultMetadata = {
-      title: "Desmos Animation",
-      description: "",
-      author: "",
-      tags: [],
-    };
+  // 設定変更ハンドラー（useCallbackで安定化）
+  const handleSettingsChange = useCallback(
+    (updates: Partial<VideoExportSettings>) => {
+      // fpsやdurationFramesの依存関係を考慮
+      const defaultAdvanced = {
+        targetPixelRatio: 0.5,
+        backgroundColor: "#ffffff",
+        antialias: true,
+        motionBlur: false,
+        frameInterpolation: false,
+      };
+      const defaultResolution = {
+        width: 1920,
+        height: 1080,
+        preset: "1080p",
+      };
+      const defaultQuality = {
+        bitrate: 5000,
+        preset: "standard",
+      };
+      const defaultFormat = {
+        container: "mp4",
+        codec: "h264",
+      };
+      const defaultMetadata = {
+        title: "Desmos Animation",
+        description: "",
+        author: "",
+        tags: [],
+      };
 
-    const newSettings = {
-      ...settings,
-      ...updates,
-      advanced: Object.assign({}, defaultAdvanced, settings.advanced, updates.advanced || {}),
-      resolution: Object.assign(
-        {},
-        defaultResolution,
-        settings.resolution,
-        updates.resolution || {}
-      ),
-      quality: Object.assign({}, defaultQuality, settings.quality, updates.quality || {}),
-      format: Object.assign({}, defaultFormat, settings.format, updates.format || {}),
-      metadata: Object.assign({}, defaultMetadata, settings.metadata, updates.metadata || {}),
-    };
-    if (updates.durationFrames !== undefined && updates.fps === undefined) {
-      newSettings.fps = settings.fps;
-    }
-    // codec/containerの組み合わせが不正な場合は自動修正
-    if (newSettings.format.container === "gif" && newSettings.format.codec !== "h264") {
-      newSettings.format.codec = "h264";
-    }
-    setSettings(newSettings);
-    onSettingsChange?.(newSettings);
-    onVideoSettingsChange?.(newSettings); // 親コンポーネントに通知
-  };
+      setSettings((prevSettings) => {
+        const newSettings = {
+          ...prevSettings,
+          ...updates,
+          advanced: Object.assign(
+            {},
+            defaultAdvanced,
+            prevSettings.advanced,
+            updates.advanced || {}
+          ),
+          resolution: Object.assign(
+            {},
+            defaultResolution,
+            prevSettings.resolution,
+            updates.resolution || {}
+          ),
+          quality: Object.assign({}, defaultQuality, prevSettings.quality, updates.quality || {}),
+          format: Object.assign({}, defaultFormat, prevSettings.format, updates.format || {}),
+          metadata: Object.assign(
+            {},
+            defaultMetadata,
+            prevSettings.metadata,
+            updates.metadata || {}
+          ),
+        };
+        if (updates.durationFrames !== undefined && updates.fps === undefined) {
+          newSettings.fps = prevSettings.fps;
+        }
+        // codec/containerの組み合わせが不正な場合は自動修正
+        if (newSettings.format.container === "gif" && newSettings.format.codec !== "h264") {
+          newSettings.format.codec = "h264";
+        }
 
-  // 解像度プリセット変更
-  const handleResolutionPresetChange = (preset: keyof typeof RESOLUTION_PRESETS) => {
-    const resolution = RESOLUTION_PRESETS[preset];
-    handleSettingsChange({
-      resolution: {
-        ...settings.resolution,
-        preset,
-        width: resolution.width,
-        height: resolution.height,
-      },
-    });
-  };
+        // 親コンポーネントに通知
+        onSettingsChange?.(newSettings);
+        onVideoSettingsChange?.(newSettings);
 
-  // 品質プリセット変更
-  const handleQualityPresetChange = (preset: keyof typeof QUALITY_PRESETS) => {
-    const quality = QUALITY_PRESETS[preset];
-    handleSettingsChange({
-      quality: {
-        ...settings.quality,
-        preset,
-        bitrate: quality.bitrate,
-      },
-    });
-  };
+        return newSettings;
+      });
+    },
+    [onSettingsChange, onVideoSettingsChange]
+  );
+
+  // 解像度プリセット変更（useCallbackで安定化）
+  const handleResolutionPresetChange = useCallback(
+    (preset: keyof typeof RESOLUTION_PRESETS) => {
+      const resolution = RESOLUTION_PRESETS[preset];
+      handleSettingsChange({
+        resolution: {
+          ...settings.resolution,
+          preset,
+          width: resolution.width,
+          height: resolution.height,
+        },
+      });
+    },
+    [handleSettingsChange, settings.resolution]
+  );
+
+  // 品質プリセット変更（useCallbackで安定化）
+  const handleQualityPresetChange = useCallback(
+    (preset: keyof typeof QUALITY_PRESETS) => {
+      const quality = QUALITY_PRESETS[preset];
+      handleSettingsChange({
+        quality: {
+          ...settings.quality,
+          preset,
+          bitrate: quality.bitrate,
+        },
+      });
+    },
+    [handleSettingsChange, settings.quality]
+  );
 
   // エクスポート開始
   const handleExportStart = async () => {
@@ -237,6 +268,13 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
       alert("stateManager または calculator が未初期化です");
       return;
     }
+
+    console.log(`🎬 Starting video export with:`, {
+      formulas: formulas?.length || 0,
+      subtitles: subtitles?.length || 0,
+      durationFrames,
+    });
+
     setIsExporting(true);
     setExportProgress(0);
 
@@ -267,9 +305,6 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
           });
         }
 
-        // プレビュー用img
-        setPreviewImage(imageUrl ?? null);
-
         const img = await new Promise<HTMLImageElement>((resolve) => {
           const image = new Image();
           image.crossOrigin = "anonymous";
@@ -277,15 +312,38 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
           image.src = imageUrl!;
         });
 
+        // 数式と字幕を含む合成フレームを作成
         const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext("2d");
-        ctx?.drawImage(img, 0, 0, width, height);
+
+        if (!ctx) {
+          throw new Error("Canvas context not available");
+        }
+
+        // 背景を白で塗りつぶし
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+
+        // グラフ画像を描画
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // OverlayRendererの描画ロジックを使用して数式と字幕を描画
+        console.log(
+          `🎬 Frame ${i}: formulas=${formulas?.length || 0}, subtitles=${subtitles?.length || 0}`
+        );
+        if (formulas && formulas.length > 0) {
+          console.log(`🧮 First formula:`, formulas[0]);
+        }
+        await renderOverlayToCanvas(canvas, formulas || [], subtitles || [], i, width, height);
 
         const pngBlob: Blob = await new Promise((resolve) => {
           canvas.toBlob((blob) => resolve(blob!), "image/png");
         });
+
+        // プレビュー用に合成フレームを使用
+        setPreviewImage(canvas.toDataURL("image/png"));
 
         const fileName = `frame_${String(i).padStart(4, "0")}.png`;
         ffmpeg.FS("writeFile", fileName, new Uint8Array(await pngBlob.arrayBuffer()));
@@ -348,22 +406,22 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
     }
   };
 
-  // 推定ファイルサイズ計算
-  const estimateFileSize = () => {
+  // 推定ファイルサイズ計算（useCallbackで安定化）
+  const estimateFileSize = useCallback(() => {
     const { durationFrames, quality } = settings;
     const { bitrate = 5000 } = quality;
     const duration = frameToSeconds(durationFrames);
     const sizeInMB = (bitrate * duration) / 8 / 1024; // kbps to MB
     return sizeInMB.toFixed(1);
-  };
+  }, [settings, frameToSeconds]);
 
-  // 推定レンダリング時間計算
-  const estimateRenderTime = () => {
+  // 推定レンダリング時間計算（useCallbackで安定化）
+  const estimateRenderTime = useCallback(() => {
     const { durationFrames } = settings;
     const totalFrames = durationFrames;
     const estimatedSeconds = totalFrames * 0.5; // フレームあたり0.5秒と仮定
     return Math.ceil(estimatedSeconds / 60); // 分単位
-  };
+  }, [settings]);
 
   return (
     <div className="p-4 space-y-6 max-h-full overflow-y-auto">
@@ -381,6 +439,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
               動画の長さ (フレーム)
             </label>
             <input
+              key="durationFrames-input"
               type="number"
               value={settings.durationFrames}
               onChange={(e) => handleSettingsChange({ durationFrames: parseInt(e.target.value) })}
@@ -395,6 +454,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
               フレームレート (fps)
             </label>
             <select
+              key="fps-select"
               value={settings.fps}
               onChange={(e) => handleSettingsChange({ fps: parseInt(e.target.value) })}
               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -415,6 +475,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">プリセット</label>
           <select
+            key="resolution-preset-select"
             value={settings.resolution.preset}
             onChange={(e) =>
               handleResolutionPresetChange(e.target.value as keyof typeof RESOLUTION_PRESETS)
@@ -433,6 +494,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">幅 (px)</label>
             <input
+              key="resolution-width-input"
               type="number"
               value={settings.resolution.width}
               onChange={(e) =>
@@ -453,6 +515,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">高さ (px)</label>
             <input
+              key="resolution-height-input"
               type="number"
               value={settings.resolution.height}
               onChange={(e) =>
@@ -528,6 +591,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">コンテナ</label>
             <select
+              key="format-container-select"
               value={settings.format.container}
               onChange={(e) =>
                 handleSettingsChange({
@@ -547,6 +611,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">コーデック</label>
             <select
+              key="format-codec-select"
               value={settings.format.codec}
               onChange={(e) =>
                 handleSettingsChange({
@@ -576,6 +641,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
               グラフのピクセル比: {settings.advanced.targetPixelRatio}x
             </label>
             <input
+              key="advanced-pixelratio-input"
               type="range"
               min="0.05"
               max="2"
@@ -653,6 +719,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">タイトル</label>
             <input
+              key="metadata-title-input"
               type="text"
               value={settings.metadata.title}
               onChange={(e) =>
@@ -671,6 +738,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">説明</label>
             <textarea
+              key="metadata-description-input"
               value={settings.metadata.description}
               onChange={(e) =>
                 handleSettingsChange({

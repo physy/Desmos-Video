@@ -7,6 +7,12 @@ declare global {
       GraphingCalculator: (elt: HTMLElement, options?: GraphingCalculatorOptions) => Calculator;
       Calculator3D: (elt: HTMLElement, options?: GraphingCalculatorOptions) => Calculator;
     };
+    MathJax?: {
+      tex2svg: (latex: string, options?: { display?: boolean }) => HTMLElement | null;
+      startup?: {
+        promise: Promise<void>;
+      };
+    };
   }
 }
 

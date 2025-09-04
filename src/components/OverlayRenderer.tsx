@@ -1,63 +1,10 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import type { FormulaElement, SubtitleElement, AnimationState } from "../types/formula";
 
-// MathJax型定義（v4対応）
-declare global {
-  interface Window {
-    MathJax?: {
-      tex?: {
-        inlineMath: string[][];
-        displayMath: string[][];
-        processEscapes: boolean;
-        processEnvironments: boolean;
-        packages?: string[];
-        formatError?: (jax: unknown, error: unknown) => unknown;
-      };
-      options?: {
-        processHtmlClass?: string;
-        processScriptType?: string;
-        skipHtmlTags?: string[];
-        ignoreHtmlClass?: string;
-      };
-      chtml?: {
-        scale?: number;
-        minScale?: number;
-        matchFontHeight?: boolean;
-        fontURL?: string;
-      };
-      svg?: {
-        fontCache?: string;
-      };
-      startup?: {
-        defaultReady: () => void;
-        ready?: () => void;
-      };
-      typesetPromise?: (elements?: HTMLElement[]) => Promise<void>;
-      tex2svg?: (latex: string, options?: Record<string, unknown>) => HTMLElement;
-      tex2chtml?: (latex: string, options?: Record<string, unknown>) => HTMLElement;
-      tex2chtmlPromise?: (latex: string, options?: Record<string, unknown>) => Promise<HTMLElement>;
-      mathml2chtmlPromise?: (
-        mathml: string,
-        options?: Record<string, unknown>
-      ) => Promise<HTMLElement>;
-      // MathJax v4の新しいAPI
-      document?: {
-        convert: (input: string, options?: Record<string, unknown>) => HTMLElement;
-      };
-    };
-  }
-}
-
 interface OverlayRendererProps {
   formulas: FormulaElement[];
   subtitles: SubtitleElement[];
   currentFrame: number;
-  graphBounds?: {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-  };
   containerWidth: number;
   containerHeight: number;
   // エクスポート解像度とスケール情報
@@ -87,6 +34,16 @@ const calculateAnimationProgress = (
   const animation = element.animation;
   const exitAnimation = element.exitAnimation;
 
+  // デバッグ情報
+  if (animation?.type === "draw") {
+    console.log(`🎬 Animation Progress Debug for ${element.id}:`);
+    console.log(`  Current Frame: ${currentFrame}`);
+    console.log(`  Start Frame: ${startFrame}`);
+    console.log(`  Animation Type: ${animation.type}`);
+    console.log(`  Animation Duration: ${animation.duration}`);
+    console.log(`  Animation Delay: ${animation.delay || 0}`);
+  }
+
   // 表示継続時間のチェック
   const displayEndFrame = element.displayDuration ? startFrame + element.displayDuration : Infinity;
 
@@ -98,12 +55,22 @@ const calculateAnimationProgress = (
     const animationStartFrame = startFrame + (animation.delay || 0);
     const animationEndFrame = animationStartFrame + animation.duration;
 
+    if (animation.type === "draw") {
+      console.log(`  Animation Start Frame: ${animationStartFrame}`);
+      console.log(`  Animation End Frame: ${animationEndFrame}`);
+    }
+
     if (currentFrame < animationStartFrame) {
       enterProgress = 0;
       enterVisible = false;
     } else if (currentFrame < animationEndFrame) {
       const rawProgress = (currentFrame - animationStartFrame) / animation.duration;
       enterProgress = applyEasing(rawProgress, animation.easing);
+
+      if (animation.type === "draw") {
+        console.log(`  Raw Progress: ${rawProgress}`);
+        console.log(`  Enter Progress: ${enterProgress}`);
+      }
     }
   }
 
@@ -144,6 +111,15 @@ const calculateAnimationProgress = (
   const finalProgress = enterProgress * (1 - exitProgress);
   const finalVisible = enterVisible && exitVisible && element.visible && finalProgress > 0;
 
+  // drawアニメーションの場合は最終結果をログ出力
+  if (animation?.type === "draw") {
+    console.log(`  Final Progress: ${finalProgress}`);
+    console.log(`  Final Visible: ${finalVisible}`);
+    console.log(`  Enter Progress: ${enterProgress}`);
+    console.log(`  Exit Progress: ${exitProgress}`);
+    console.log(`---`);
+  }
+
   return {
     frame: currentFrame,
     progress: Math.max(0, Math.min(1, finalProgress)),
@@ -167,41 +143,455 @@ const applyEasing = (progress: number, easing?: string): number => {
   }
 };
 
-// 座標変換：グラフ座標 → 画面座標（エクスポート解像度基準）
-const graphToScreen = (
-  graphX: number,
-  graphY: number,
-  graphBounds: { left: number; right: number; top: number; bottom: number },
-  exportWidth: number,
-  exportHeight: number,
-  displayScale: number,
-  displayOffsetX: number,
-  displayOffsetY: number
-) => {
-  // エクスポート解像度での座標を計算
-  const exportScreenX =
-    ((graphX - graphBounds.left) / (graphBounds.right - graphBounds.left)) * exportWidth;
-  const exportScreenY =
-    ((graphBounds.top - graphY) / (graphBounds.top - graphBounds.bottom)) * exportHeight;
-
-  // 実際の表示サイズにスケール＆オフセット適用
-  const displayX = exportScreenX * displayScale + displayOffsetX;
-  const displayY = exportScreenY * displayScale + displayOffsetY;
-
-  return { x: displayX, y: displayY };
-};
-
 // タイプライターアニメーション用のテキスト分割
 const getTypewriterText = (text: string, progress: number): string => {
   const targetLength = Math.floor(text.length * progress);
   return text.substring(0, targetLength);
 };
 
+// SVG描画アニメーション用のヘルパー関数
+const applySVGDrawAnimation = (
+  svgElement: HTMLElement,
+  progress: number,
+  options?: {
+    sequentialChars: boolean;
+    strokeDuration: number;
+    fillDuration: number;
+  },
+  targetColor?: string // 目標色を追加
+): HTMLElement => {
+  const opts = {
+    sequentialChars: true,
+    strokeDuration: 0.6,
+    fillDuration: 0.4,
+    overlapRatio: 0.3, // デフォルトで30%の重複
+    ...options,
+  };
+
+  // デバッグログを簡潔に
+  if (progress === 0 || progress === 1) {
+    console.log(
+      `🎨 SVG Draw Animation - Progress: ${progress}, Options:`,
+      opts,
+      `Target Color: ${targetColor}`
+    );
+  }
+
+  const clonedElement = svgElement.cloneNode(true) as HTMLElement;
+  const svg = clonedElement.querySelector("svg");
+
+  if (!svg) {
+    console.warn("❌ No SVG element found");
+    return clonedElement;
+  }
+
+  // MathJaxのSVGから描画可能な要素を取得（useやrect、textも含む）
+  const drawableElements = svg.querySelectorAll(
+    "path, line, polyline, polygon, circle, ellipse, rect, use, text"
+  );
+
+  // パス定義を収集（defsセクションから + グローバルなMathJaxの定義も含む）
+  const defs = svg.querySelector("defs");
+  const pathDefs = new Map<string, SVGPathElement>();
+
+  // ローカルのdefs
+  if (defs) {
+    const definedPaths = defs.querySelectorAll("path[id]");
+    definedPaths.forEach((path) => {
+      const id = path.getAttribute("id");
+      if (id) {
+        pathDefs.set(`#${id}`, path as SVGPathElement);
+      }
+    });
+  }
+
+  // グローバルなMathJaxの定義を探す（ドキュメント全体から）
+  const globalDefs = document.querySelectorAll("defs path[id], svg defs path[id]");
+  globalDefs.forEach((path) => {
+    const id = path.getAttribute("id");
+    if (id && !pathDefs.has(`#${id}`)) {
+      pathDefs.set(`#${id}`, path as SVGPathElement);
+    }
+  });
+
+  // 文字要素（use要素とtext要素）のリストを作成
+  const useElements = Array.from(drawableElements).filter((el) => el instanceof SVGUseElement);
+  const textElements = Array.from(drawableElements).filter((el) => el instanceof SVGTextElement);
+
+  // 全ての描画可能要素のリストを順番付きで作成（統一されたアニメーション管理のため）
+  const allDrawableElements = Array.from(drawableElements);
+  const totalElements = allDrawableElements.length;
+
+  // 初回のみ詳細情報をログ出力
+  if (progress === 0) {
+    console.log(
+      `🔤 Found ${useElements.length} use elements, ${textElements.length} text elements, ${totalElements} total drawable elements`
+    );
+  }
+
+  let animatedCount = 0;
+
+  drawableElements.forEach((element, index) => {
+    const svgEl = element as SVGElement;
+    let pathLength = 0;
+    let canAnimate = false;
+    const elementType = svgEl.tagName.toLowerCase();
+
+    // 統一された要素インデックス（全要素での順番）
+    const globalElementIndex = index;
+    // use要素の場合のみ、use要素内での順番も取得
+    const useElementIndex =
+      svgEl instanceof SVGUseElement ? useElements.findIndex((el) => el === svgEl) : -1;
+    // text要素の場合のみ、text要素内での順番も取得
+    const textElementIndex =
+      svgEl instanceof SVGTextElement ? textElements.findIndex((el) => el === svgEl) : -1;
+    try {
+      // パスの長さを計算
+      if (svgEl instanceof SVGPathElement) {
+        pathLength = svgEl.getTotalLength();
+        canAnimate = true;
+      } else if (svgEl instanceof SVGUseElement) {
+        // use要素の場合、参照先のパスを確認
+        const href = svgEl.getAttribute("href") || svgEl.getAttribute("xlink:href");
+
+        if (href && pathDefs.has(href)) {
+          const referencedPath = pathDefs.get(href);
+          if (referencedPath) {
+            try {
+              pathLength = referencedPath.getTotalLength();
+              canAnimate = true;
+            } catch (e) {
+              // 参照パスが取得できない場合はスキップ
+            }
+          }
+        } else {
+          // use要素自体にstroke-dasharrayを適用してみる（文字の場合は効果的ではないが試行）
+          const bbox = svgEl.getBBox ? svgEl.getBBox() : null;
+          if (bbox) {
+            // 要素のバウンディングボックスから推定した長さを使用
+            pathLength = 2 * (bbox.width + bbox.height);
+            canAnimate = true;
+          }
+        }
+      } else if (svgEl instanceof SVGLineElement) {
+        const x1 = parseFloat(svgEl.getAttribute("x1") || "0");
+        const y1 = parseFloat(svgEl.getAttribute("y1") || "0");
+        const x2 = parseFloat(svgEl.getAttribute("x2") || "0");
+        const y2 = parseFloat(svgEl.getAttribute("y2") || "0");
+        pathLength = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+        canAnimate = true;
+      } else if (svgEl instanceof SVGRectElement) {
+        const width = parseFloat(svgEl.getAttribute("width") || "0");
+        const height = parseFloat(svgEl.getAttribute("height") || "0");
+        // 矩形の周囲を描画する場合
+        pathLength = 2 * (width + height);
+        canAnimate = true;
+      } else if (svgEl instanceof SVGCircleElement) {
+        const r = parseFloat(svgEl.getAttribute("r") || "0");
+        pathLength = 2 * Math.PI * r;
+        canAnimate = true;
+      } else if (svgEl instanceof SVGEllipseElement) {
+        const rx = parseFloat(svgEl.getAttribute("rx") || "0");
+        const ry = parseFloat(svgEl.getAttribute("ry") || "0");
+        pathLength = Math.PI * (3 * (rx + ry) - Math.sqrt((3 * rx + ry) * (rx + 3 * ry)));
+        canAnimate = true;
+      } else if (svgEl instanceof SVGTextElement) {
+        const fontSizeAttr = svgEl.getAttribute("font-size");
+        const width = parseFloat(fontSizeAttr || "0");
+        if (width) {
+          pathLength = 4 * width;
+          canAnimate = true;
+        }
+        console.log(`🔤 Text Element Detected: "${svgEl.textContent}" ${pathLength}`);
+        console.dir(svgEl);
+      }
+
+      if (canAnimate && pathLength > 0) {
+        // 全要素での統一された順番表示設定を適用
+        let elementStartTime = 0;
+        let elementDuration = 1;
+
+        if (opts.sequentialChars && totalElements > 1) {
+          // 順番表示の場合: 各要素が重複しながらアニメーション
+          const overlapRatio = opts.overlapRatio; // オプションから重複率を取得
+          const baseElementDuration = 1 / (1 + (totalElements - 1) * (1 - overlapRatio));
+          elementDuration = baseElementDuration;
+          elementStartTime = globalElementIndex * baseElementDuration * (1 - overlapRatio);
+        } else {
+          // 同時表示の場合: 全要素が同時にアニメーション
+          elementStartTime = 0;
+          elementDuration = 1;
+        }
+
+        const elementEndTime = elementStartTime + elementDuration;
+
+        // デバッグ: 最初の要素のみログ出力
+        if (globalElementIndex === 0) {
+          console.log(
+            `🚀 Element ${globalElementIndex}/${totalElements}: sequential=${
+              opts.sequentialChars
+            }, start=${elementStartTime.toFixed(3)}, duration=${elementDuration.toFixed(3)}`
+          );
+        }
+
+        if (progress < elementStartTime) {
+          // まだ開始していない - 完全に非表示
+          svgEl.style.visibility = "hidden";
+        } else if (progress <= elementEndTime) {
+          // この要素のアニメーション中
+          svgEl.style.visibility = "visible";
+          const elementProgress = (progress - elementStartTime) / elementDuration;
+
+          // 重複2フェーズアニメーション: stroke開始 → fillも重複して開始 → stroke終了=fill終了でstroke非表示
+          const strokeDuration = opts.strokeDuration;
+          const fillDuration = opts.fillDuration;
+
+          // fillの開始タイミングを調整（strokeが終わるのと同時にfillが完了するように）
+          const fillStartTime = strokeDuration - fillDuration;
+          const fillPhaseStart = Math.max(0, fillStartTime);
+          const strokePhaseEnd = strokeDuration;
+
+          // stroke フェーズ
+          const strokeProgress = Math.min(1, Math.max(0, elementProgress / strokeDuration));
+          const drawnLength = pathLength * strokeProgress;
+          const remainingLength = Math.max(0, pathLength - drawnLength);
+
+          // stroke-dasharrayとstroke-dashoffsetを設定
+          svgEl.style.strokeDasharray = `${drawnLength} ${remainingLength}`;
+          svgEl.style.strokeDashoffset = "0";
+
+          // strokeが設定されていない場合は追加
+          const currentStroke = svgEl.style.stroke || svgEl.getAttribute("stroke");
+          if (!currentStroke || currentStroke === "none") {
+            // targetColorが指定されている場合はそれを使用、なければcurrentColor
+            svgEl.style.stroke = targetColor || "currentColor";
+          }
+
+          // fill フェーズ（重複実行）
+          let fillProgress = 0;
+          if (elementProgress >= fillPhaseStart) {
+            fillProgress = Math.min(
+              1,
+              Math.max(0, (elementProgress - fillPhaseStart) / fillDuration)
+            );
+          }
+
+          // strokeのフェードアウト（fillの進行に合わせて徐々に薄くする）
+          const strokeOpacity = Math.max(0, 1 - fillProgress);
+
+          // アニメーション完了判定
+          const isAnimationComplete = elementProgress >= strokeDuration;
+
+          if (isAnimationComplete) {
+            // アニメーション完了 - 全てのアニメーションスタイルをリセット
+            svgEl.style.fill = "";
+            svgEl.style.fillOpacity = "";
+            svgEl.style.stroke = "";
+            svgEl.style.strokeOpacity = "";
+            svgEl.style.strokeWidth = "";
+            svgEl.style.strokeDasharray = "";
+            svgEl.style.strokeDashoffset = "";
+            svgEl.style.opacity = "1";
+          } else {
+            // アニメーション中
+            svgEl.style.strokeWidth = "20";
+            svgEl.style.opacity = "1";
+
+            // strokeのスタイル設定（fillの進行に合わせて徐々にフェード）
+            if (strokeOpacity > 0) {
+              svgEl.style.stroke = targetColor || "currentColor";
+              svgEl.style.strokeOpacity = strokeOpacity.toString();
+            } else {
+              svgEl.style.stroke = "none";
+            }
+
+            if (fillProgress > 0) {
+              // fillが開始されている場合は設定された色で徐々に復元
+              svgEl.style.fill = targetColor || "currentColor";
+              svgEl.style.fillOpacity = fillProgress.toString();
+            } else {
+              // まだfillが開始されていない場合
+              svgEl.style.fill = "none";
+            }
+          }
+
+          if (globalElementIndex === 0) {
+            console.log(
+              `🖊️ Element ${globalElementIndex}: STROKE ${(strokeProgress * 100).toFixed(
+                1
+              )}%, FILL ${(fillProgress * 100).toFixed(1)}%, StrokeOpacity ${strokeOpacity.toFixed(
+                2
+              )}`
+            );
+          }
+        } else {
+          // アニメーション完了
+          svgEl.style.visibility = "visible";
+          svgEl.style.opacity = "1";
+          svgEl.style.fill = "";
+          svgEl.style.fillOpacity = "";
+          svgEl.style.stroke = "";
+          svgEl.style.strokeOpacity = "";
+          svgEl.style.strokeWidth = "";
+          svgEl.style.strokeDasharray = "";
+          svgEl.style.strokeDashoffset = "";
+        }
+        animatedCount++;
+      } else {
+        // stroke-dasharrayが使えない場合は、文字要素に対して段階的アニメーションを適用
+        if (svgEl instanceof SVGUseElement && elementType === "use" && useElementIndex >= 0) {
+          // 全要素での統一された順番表示設定を適用
+          let elementStartTime = 0;
+          let elementDuration = 1;
+
+          if (opts.sequentialChars && totalElements > 1) {
+            // 順番表示の場合: 各要素が重複しながらアニメーション
+            const overlapRatio = opts.overlapRatio; // オプションから重複率を取得
+            const baseElementDuration = 1 / (1 + (totalElements - 1) * (1 - overlapRatio));
+            elementDuration = baseElementDuration;
+            elementStartTime = globalElementIndex * baseElementDuration * (1 - overlapRatio);
+          } else {
+            // 同時表示の場合: 全要素が同時にアニメーション
+            elementStartTime = 0;
+            elementDuration = 1;
+          }
+
+          // このキャラクターの終了時刻
+          const elementEndTime = elementStartTime + elementDuration;
+
+          // デバッグ: 最初と最後の要素のみログ出力
+          if (globalElementIndex === 0 || globalElementIndex === totalElements - 1) {
+            console.log(
+              `📋 Element ${globalElementIndex}/${totalElements} (${elementType}): sequential=${
+                opts.sequentialChars
+              }, start=${elementStartTime.toFixed(3)}, duration=${elementDuration.toFixed(
+                3
+              )}, progress=${progress.toFixed(3)}`
+            );
+          }
+
+          if (progress < elementStartTime) {
+            // まだ開始していない - 完全に非表示
+            svgEl.style.visibility = "hidden";
+          } else if (progress <= elementEndTime) {
+            // このキャラクターのアニメーション中
+            svgEl.style.visibility = "visible";
+            const elementProgress = (progress - elementStartTime) / elementDuration;
+
+            // 重複2フェーズアニメーション: stroke開始 → fillも重複して開始 → stroke終了=fill終了でstroke非表示
+            const strokeDuration = opts.strokeDuration;
+            const fillDuration = opts.fillDuration;
+
+            // fillの開始タイミングを調整（strokeが終わるのと同時にfillが完了するように）
+            const fillStartTime = strokeDuration - fillDuration;
+            const fillPhaseStart = Math.max(0, fillStartTime);
+
+            // デバッグ: 最初の要素のみログ出力
+            if (globalElementIndex === 0) {
+              console.log(
+                `🎭 Element ${globalElementIndex}: elementProgress=${elementProgress.toFixed(
+                  3
+                )}, strokeDur=${strokeDuration}, fillStart=${fillPhaseStart.toFixed(
+                  3
+                )}, fillDur=${fillDuration}`
+              );
+            }
+
+            // fill フェーズ（重複実行）
+            let fillProgress = 0;
+            if (elementProgress >= fillPhaseStart) {
+              fillProgress = Math.min(
+                1,
+                Math.max(0, (elementProgress - fillPhaseStart) / fillDuration)
+              );
+            }
+
+            // stroke フェーズ
+            const strokeProgress = Math.min(1, Math.max(0, elementProgress / strokeDuration));
+
+            // strokeのフェードアウト（fillの進行に合わせて徐々に薄くする）
+            const strokeOpacity = Math.max(0, 1 - fillProgress);
+
+            // アニメーション完了判定
+            const isAnimationComplete = elementProgress >= strokeDuration;
+
+            if (isAnimationComplete) {
+              // アニメーション完了 - 全てのアニメーションスタイルをリセット
+              svgEl.style.visibility = "visible";
+              svgEl.style.opacity = "1";
+              svgEl.style.fill = "";
+              svgEl.style.fillOpacity = "";
+              svgEl.style.stroke = "";
+              svgEl.style.strokeOpacity = "";
+              svgEl.style.strokeWidth = "";
+            } else {
+              // アニメーション中
+              svgEl.style.visibility = "visible";
+              svgEl.style.opacity = strokeProgress.toString();
+
+              // strokeのスタイル設定（fillの進行に合わせて徐々にフェード）
+              if (strokeOpacity > 0) {
+                svgEl.style.stroke = `currentColor`;
+                svgEl.style.strokeOpacity = strokeOpacity.toString();
+                svgEl.style.strokeWidth = "3";
+              } else {
+                svgEl.style.stroke = "none";
+                svgEl.style.strokeWidth = "0";
+              }
+
+              if (fillProgress > 0) {
+                // fillが開始されている場合は設定された色で徐々に復元
+                svgEl.style.fill = `currentColor`;
+                svgEl.style.fillOpacity = fillProgress.toString();
+              } else {
+                // まだfillが開始されていない場合
+                svgEl.style.fill = "none";
+              }
+            }
+
+            if (globalElementIndex === 0) {
+              console.log(
+                `🖊️ Element ${globalElementIndex} (USE): STROKE ${(strokeProgress * 100).toFixed(
+                  1
+                )}%, FILL ${(fillProgress * 100).toFixed(
+                  1
+                )}%, StrokeOpacity ${strokeOpacity.toFixed(2)}`
+              );
+            }
+          } else {
+            // アニメーション完了
+            svgEl.style.visibility = "visible";
+            svgEl.style.opacity = "1";
+            svgEl.style.fill = "";
+            svgEl.style.fillOpacity = "";
+            svgEl.style.stroke = "";
+            svgEl.style.strokeOpacity = "";
+            svgEl.style.strokeWidth = "";
+          }
+
+          animatedCount++;
+        }
+      }
+    } catch (error) {
+      // getTotalLength()などが失敗した場合はスキップ
+      if (progress === 0) {
+        console.warn(`❌ SVG element animation failed for ${elementType}:`, error);
+      }
+    }
+  });
+
+  // 最終結果は初回のみログ出力
+  if (progress === 0 || progress === 1) {
+    console.log(`🎉 Animated ${animatedCount}/${totalElements} elements (progress: ${progress})`);
+  }
+
+  return clonedElement;
+};
+
 export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
   formulas,
   subtitles,
   currentFrame,
-  graphBounds,
   containerWidth,
   containerHeight,
   exportWidth = 1920,
@@ -255,12 +645,27 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
           console.log("Initializing MathJax...");
         }
 
-        // MathJaxの設定
-        window.MathJax = {
-          svg: {
-            fontCache: "global",
-          },
-        };
+        // MathJaxの設定（SVG出力最適化）
+        if (!window.MathJax) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (window as any).MathJax = {
+            tex: {
+              inlineMath: [
+                ["$", "$"],
+                ["\\(", "\\)"],
+              ],
+              displayMath: [
+                ["$$", "$$"],
+                ["\\[", "\\]"],
+              ],
+              processEscapes: true,
+              processEnvironments: true,
+            },
+            svg: {
+              fontCache: "none",
+            },
+          };
+        }
 
         // MathJaxスクリプトを動的に読み込み
         const mathJaxScript = document.createElement("script");
@@ -293,9 +698,9 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
     initMathJax();
   }, [debug]);
 
-  // 数式をHTMLに変換
+  // 数式をHTMLに変換（SVG優先、描画アニメーション対応）
   const renderMathToHTML = useCallback(
-    async (latex: string): Promise<string> => {
+    async (latex: string, fontSize: number, forDrawAnimation = false): Promise<string> => {
       if (!window.MathJax || !mathJaxLoaded) {
         if (debug) {
           console.log("MathJax not ready, returning fallback for:", latex);
@@ -315,47 +720,105 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
           console.log("Processed LaTeX:", processedLatex);
         }
 
-        // フォールバック: tex2chtml (同期版)
-        if (window.MathJax.tex2chtml) {
-          const node = window.MathJax.tex2chtml(processedLatex, {
-            display: true,
-            em: 16,
-            ex: 8,
-          });
-          if (node) {
-            if (debug) {
-              console.log("Successfully rendered with tex2chtml");
-            }
-            return node.outerHTML;
-          }
-        }
-
-        // フォールバック: tex2chtmlPromise
-        if (window.MathJax.tex2chtmlPromise) {
-          const node = await window.MathJax.tex2chtmlPromise(processedLatex, {
-            display: true,
-            em: 16,
-            ex: 8,
-            containerWidth: 1200,
-            lineWidth: 1000000,
-          });
-
-          if (node) {
-            if (debug) {
-              console.log("Successfully rendered with tex2chtmlPromise");
-            }
-            return node.outerHTML;
-          }
-        }
-
-        // フォールバック: tex2svg を使用
+        // SVGレンダリングを試行
         if (window.MathJax.tex2svg) {
-          const svgNode = window.MathJax.tex2svg(latex, { display: true });
+          const svgNode = window.MathJax.tex2svg(processedLatex, {
+            display: true,
+          });
           if (svgNode) {
             if (debug) {
               console.log("Successfully rendered with tex2svg");
             }
-            return svgNode.outerHTML;
+
+            // プレビュー用のex/em単位をpx単位に強制変換（displayScaleを適用）
+            let svgHTML = svgNode.outerHTML;
+
+            // スケールファクターを計算（プレビューではdisplayScaleを適用）
+            const baseFontSize = fontSize * displayScale; // プレビュー用のベースフォントサイズ（displayScaleを適用）
+
+            // SVGのwidth/height属性をピクセル単位に強制変換
+            svgHTML = svgHTML.replace(
+              /width="([0-9.]+)(ex|em)"/g,
+              (match: string, value: string, unit: string) => {
+                const numValue = parseFloat(value);
+                const pixelValue =
+                  unit === "ex" ? numValue * (baseFontSize * 0.5) : numValue * baseFontSize;
+                if (debug) {
+                  console.log(
+                    `Converting preview SVG width: width="${value}${unit}" -> width="${pixelValue}px" (displayScale=${displayScale})`
+                  );
+                }
+                return `width="${pixelValue}px"`;
+              }
+            );
+
+            svgHTML = svgHTML.replace(
+              /height="([0-9.]+)(ex|em)"/g,
+              (match: string, value: string, unit: string) => {
+                const numValue = parseFloat(value);
+                const pixelValue =
+                  unit === "ex" ? numValue * (baseFontSize * 0.5) : numValue * baseFontSize;
+                if (debug) {
+                  console.log(
+                    `Converting preview SVG height: height="${value}${unit}" -> height="${pixelValue}px" (displayScale=${displayScale})`
+                  );
+                }
+                return `height="${pixelValue}px"`;
+              }
+            );
+
+            // mjx-containerのスタイルも調整（必要に応じて）
+            svgHTML = svgHTML.replace(
+              /<mjx-container([^>]*)>/g,
+              (match: string, attributes: string) => {
+                let updatedAttributes = attributes;
+
+                // widthやheightがstyle属性に含まれている場合も変換
+                updatedAttributes = updatedAttributes.replace(
+                  /style="([^"]*)"/g,
+                  (_styleMatch: string, styleContent: string) => {
+                    let updatedStyleContent = styleContent;
+
+                    // style内のwidth/height変換（displayScaleを適用）
+                    updatedStyleContent = updatedStyleContent.replace(
+                      /width:\s*([0-9.]+)(ex|em)/g,
+                      (_cssMatch: string, value: string, unit: string) => {
+                        const numValue = parseFloat(value);
+                        const pixelValue =
+                          unit === "ex" ? numValue * (baseFontSize * 0.5) : numValue * baseFontSize;
+                        if (debug) {
+                          console.log(
+                            `Converting preview CSS width: width: ${value}${unit} -> width: ${pixelValue}px (displayScale=${displayScale})`
+                          );
+                        }
+                        return `width: ${pixelValue}px`;
+                      }
+                    );
+
+                    updatedStyleContent = updatedStyleContent.replace(
+                      /height:\s*([0-9.]+)(ex|em)/g,
+                      (_cssMatch: string, value: string, unit: string) => {
+                        const numValue = parseFloat(value);
+                        const pixelValue =
+                          unit === "ex" ? numValue * (baseFontSize * 0.5) : numValue * baseFontSize;
+                        if (debug) {
+                          console.log(
+                            `Converting preview CSS height: height: ${value}${unit} -> height: ${pixelValue}px (displayScale=${displayScale})`
+                          );
+                        }
+                        return `height: ${pixelValue}px`;
+                      }
+                    );
+
+                    return `style="${updatedStyleContent}"`;
+                  }
+                );
+
+                return `<mjx-container${updatedAttributes}>`;
+              }
+            );
+
+            return svgHTML;
           }
         }
 
@@ -368,7 +831,7 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
         return `<span style="color: red;">Error: ${latex}</span>`;
       }
     },
-    [mathJaxLoaded, debug]
+    [mathJaxLoaded, debug, displayScale]
   );
 
   // 要素の更新処理
@@ -394,7 +857,11 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
             console.log(`Formula ${index} animation state:`, animationState);
           }
 
-          const html = await renderMathToHTML(formula.content);
+          const html = await renderMathToHTML(
+            formula.content,
+            formula.style.fontSize,
+            formula.animation?.type === "draw"
+          );
           if (debug) {
             console.log(`Formula ${index} rendered HTML:`, html.substring(0, 100) + "...");
           }
@@ -424,24 +891,20 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
     updateElements();
   }, [formulas, subtitles, currentFrame, mathJaxLoaded, renderMathToHTML, debug]);
 
-  // 画面座標からグラフ座標への変換
-  const screenToGraph = useCallback(
+  // 画面座標から数式の相対座標への変換（数式も0-1の範囲で扱う）
+  const screenToFormulaRelative = useCallback(
     (screenX: number, screenY: number) => {
-      if (!graphBounds) return { x: 0, y: 0 };
-
       // 表示座標からエクスポート座標に変換
       const exportX = (screenX - displayOffsetX) / displayScale;
       const exportY = (screenY - displayOffsetY) / displayScale;
 
-      // エクスポート座標からグラフ座標に変換
-      const graphX =
-        graphBounds.left + (exportX / exportWidth) * (graphBounds.right - graphBounds.left);
-      const graphY =
-        graphBounds.top - (exportY / exportHeight) * (graphBounds.top - graphBounds.bottom);
+      // エクスポート座標から相対座標(0-1)に変換
+      const relativeX = exportX / exportWidth;
+      const relativeY = exportY / exportHeight;
 
-      return { x: graphX, y: graphY };
+      return { x: relativeX, y: relativeY };
     },
-    [graphBounds, displayScale, displayOffsetX, displayOffsetY, exportWidth, exportHeight]
+    [displayScale, displayOffsetX, displayOffsetY, exportWidth, exportHeight]
   );
 
   // 画面座標から字幕の相対座標への変換
@@ -483,29 +946,11 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
 
       if (!element) return;
 
-      // 要素の現在の画面座標を取得
-      let elementScreenX, elementScreenY;
-      if (elementType === "formula") {
-        if (!graphBounds) return;
-        const screenPos = graphToScreen(
-          element.position.x,
-          element.position.y,
-          graphBounds,
-          exportWidth,
-          exportHeight,
-          displayScale,
-          displayOffsetX,
-          displayOffsetY
-        );
-        elementScreenX = screenPos.x;
-        elementScreenY = screenPos.y;
-      } else {
-        // 字幕の場合
-        const exportScreenX = element.position.x * exportWidth;
-        const exportScreenY = element.position.y * exportHeight;
-        elementScreenX = exportScreenX * displayScale + displayOffsetX;
-        elementScreenY = exportScreenY * displayScale + displayOffsetY;
-      }
+      // 要素の現在の画面座標を取得（数式も字幕も同じく0-1の相対座標として扱う）
+      const exportScreenX = element.position.x * exportWidth;
+      const exportScreenY = element.position.y * exportHeight;
+      const elementScreenX = exportScreenX * displayScale + displayOffsetX;
+      const elementScreenY = exportScreenY * displayScale + displayOffsetY;
 
       // マウス位置と要素位置の差分（オフセット）を計算
       const offsetX = startX - elementScreenX;
@@ -526,7 +971,6 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
       onElementSelect,
       formulas,
       subtitles,
-      graphBounds,
       exportWidth,
       exportHeight,
       displayScale,
@@ -594,9 +1038,9 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
             // オフセットを考慮して正しい位置を計算
             const targetScreenX = currentX - dragState.offsetX;
             const targetScreenY = currentY - dragState.offsetY;
-            const newGraphPos = screenToGraph(targetScreenX, targetScreenY);
+            const newRelativePos = screenToFormulaRelative(targetScreenX, targetScreenY);
             onFormulaUpdate(dragState.elementId, {
-              position: newGraphPos,
+              position: newRelativePos,
             });
           } else if (dragState.elementType === "subtitle" && onSubtitleUpdate) {
             // オフセットを考慮して正しい位置を計算
@@ -645,7 +1089,7 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
     [
       dragState,
       resizeState,
-      screenToGraph,
+      screenToFormulaRelative,
       screenToSubtitleRelative,
       onFormulaUpdate,
       onSubtitleUpdate,
@@ -703,7 +1147,6 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
         if (debug) {
           console.log(`Rendering formula ${index}:`, {
             visible: animationState.visible,
-            graphBounds: !!graphBounds,
             element: element.id,
             progress: animationState.progress,
           });
@@ -716,26 +1159,14 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
           return null;
         }
 
-        if (!graphBounds) {
-          if (debug) {
-            console.log(`Formula ${index} not rendered (no graphBounds)`);
-          }
-          return null;
-        }
-
-        const screenPos = graphToScreen(
-          element.position.x,
-          element.position.y,
-          graphBounds,
-          exportWidth,
-          exportHeight,
-          displayScale,
-          displayOffsetX,
-          displayOffsetY
-        );
+        // 数式の座標計算（0-1の相対座標をピクセル座標に変換）
+        const exportScreenX = element.position.x * exportWidth;
+        const exportScreenY = element.position.y * exportHeight;
+        const screenX = exportScreenX * displayScale + displayOffsetX;
+        const screenY = exportScreenY * displayScale + displayOffsetY;
 
         if (debug) {
-          console.log(`Formula ${index} screen position:`, screenPos);
+          console.log(`Formula ${index} screen position:`, { screenX, screenY });
         }
 
         // アニメーション効果の計算
@@ -746,9 +1177,6 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
 
         // 出現アニメーション
         switch (element.animation?.type) {
-          case "typewriter":
-            opacity = element.style.opacity;
-            break;
           case "fade":
             opacity =
               element.style.opacity * (animationState.enterProgress || animationState.progress);
@@ -759,6 +1187,10 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
             break;
           case "slide":
             translateX = (1 - (animationState.enterProgress || animationState.progress)) * -50;
+            break;
+          case "draw":
+            // 描画アニメーションは後でHTMLコンテンツに適用
+            opacity = element.style.opacity;
             break;
         }
 
@@ -782,7 +1214,7 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
           }
         }
 
-        transform = `translate(${screenPos.x + translateX}px, ${screenPos.y}px) ${
+        transform = `translate(${screenX + translateX}px, ${screenY}px) ${
           element.style.rotation ? `rotate(${element.style.rotation}deg)` : ""
         }`;
 
@@ -824,7 +1256,48 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
                 lineHeight: "1",
                 textAlign: "center",
               }}
-              dangerouslySetInnerHTML={{ __html: html }}
+              dangerouslySetInnerHTML={{
+                __html:
+                  element.animation?.type === "draw"
+                    ? (() => {
+                        // 描画アニメーション用のHTMLを生成
+                        const progress = animationState.enterProgress || animationState.progress;
+                        if (debug) {
+                          console.log(`Draw animation progress for ${element.id}: ${progress}`);
+                        }
+
+                        const tempDiv = document.createElement("div");
+                        tempDiv.innerHTML = html;
+
+                        // drawアニメーションのオプションを取得
+                        const drawOptions =
+                          element.animation?.type === "draw"
+                            ? element.animation.drawOptions
+                            : undefined;
+
+                        // デバッグ: オプションが正しく渡されているかチェック
+                        if (progress === 0) {
+                          console.log(`🔧 Draw animation for ${element.id}:`, drawOptions);
+                        }
+
+                        const processedElement = applySVGDrawAnimation(
+                          tempDiv,
+                          progress,
+                          drawOptions,
+                          element.style.color // 色を渡す
+                        );
+
+                        if (debug && progress === 0) {
+                          console.log(
+                            `Draw animation processed HTML for ${element.id}:`,
+                            processedElement.innerHTML.substring(0, 200) + "..."
+                          );
+                        }
+
+                        return processedElement.innerHTML;
+                      })()
+                    : html,
+              }}
             />
 
             {/* 選択時のコントロール */}
@@ -953,4 +1426,326 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
       })}
     </div>
   );
+};
+
+// 静的描画用のヘルパー関数（VideoExportPanel用）
+// eslint-disable-next-line react-refresh/only-export-components
+export const renderOverlayToCanvas = async (
+  canvas: HTMLCanvasElement,
+  formulas: FormulaElement[],
+  subtitles: SubtitleElement[],
+  currentFrame: number,
+  exportWidth: number,
+  exportHeight: number
+): Promise<void> => {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  // 数式をHTMLに変換する関数（OverlayRendererから移植）
+  const renderMathToHTML = async (
+    latex: string,
+    fontSize: number,
+    color: string,
+    exportScale: number = 1 // プレビューとの一致のためのスケール
+  ): Promise<string> => {
+    // MathJaxが利用可能か、より詳細にチェック
+    console.log("MathJax Check:", {
+      windowMathJax: !!window.MathJax,
+      tex2svg: !!(window.MathJax && window.MathJax.tex2svg),
+      startup: !!(window.MathJax && window.MathJax.startup),
+    });
+
+    if (!window.MathJax || !window.MathJax.tex2svg) {
+      console.warn("MathJax not available, using fallback");
+      return `<span style="color: ${color}; font-size: ${
+        fontSize * exportScale
+      }px;">${latex}</span>`;
+    }
+
+    try {
+      const processedLatex = latex.trim();
+      // プレビューと同じスケーリングを適用
+      const scaledFontSize = fontSize * exportScale;
+      console.log(
+        `Attempting to render: ${processedLatex} with scaledFontSize: ${scaledFontSize}px (original: ${fontSize}px, scale: ${exportScale})`
+      );
+
+      // ドキュメントに基づいた正確なオプション設定
+      const options = {
+        display: true,
+      };
+
+      console.log("MathJax options:", options);
+
+      const svgNode = window.MathJax.tex2svg(processedLatex, options);
+
+      console.log("MathJax result:", svgNode);
+
+      if (svgNode) {
+        // 最初の子がHTMLElementの場合のみスタイルを設定
+        const firstChild = svgNode.firstChild;
+        if (firstChild && firstChild instanceof HTMLElement) {
+          firstChild.style.setProperty("font-size", `${scaledFontSize}px`);
+        }
+        let svgHTML = svgNode.outerHTML;
+
+        // スタンドアロンSVG作成のためのCSS定義（ドキュメント推奨 + 色指定）
+        const svgCss = [
+          // 色指定
+          `g[data-mml-node] {fill: ${color} !important;}`,
+          `text {fill: ${color} !important;}`,
+          `path {fill: ${color} !important;}`,
+          `rect {fill: ${color} !important;}`,
+          `use {fill: ${color} !important;}`,
+          // currentColor の上書き
+          `*[fill="currentColor"] {fill: ${color} !important;}`,
+        ].join("");
+
+        // スタンドアロンSVGとして必要なスタイルを埋め込み
+        svgHTML = svgHTML.match(/^<svg.*?><defs>/)
+          ? svgHTML.replace(/<defs>/, `<defs><style>${svgCss}</style>`)
+          : svgHTML.replace(/^(<svg.*?>)/, `$1<defs><style>${svgCss}</style></defs>`);
+
+        // 不要な属性を削除してクリーンアップ
+        svgHTML = svgHTML
+          .replace(/ (?:role|focusable|aria-hidden)=".*?"/g, "")
+          .replace(/"currentColor"/g, `"${color}"`);
+
+        // SVGのサイズを確実にピクセル単位に変換
+        // mjx-container内のSVGのex/em単位をピクセル単位に強制変換
+        svgHTML = svgHTML.replace(
+          /width="([0-9.]+)(ex|em)"/g,
+          (match: string, value: string, unit: string) => {
+            const numValue = parseFloat(value);
+            const pixelValue =
+              unit === "ex" ? numValue * (scaledFontSize * 0.5) : numValue * scaledFontSize;
+            console.log(
+              `Converting width: ${match} -> width="${pixelValue}px" (scaledFontSize: ${scaledFontSize})`
+            );
+            return `width="${pixelValue}px"`;
+          }
+        );
+
+        svgHTML = svgHTML.replace(
+          /height="([0-9.]+)(ex|em)"/g,
+          (match: string, value: string, unit: string) => {
+            const numValue = parseFloat(value);
+            const pixelValue =
+              unit === "ex" ? numValue * (scaledFontSize * 0.5) : numValue * scaledFontSize;
+            console.log(
+              `Converting height: ${match} -> height="${pixelValue}px" (scaledFontSize: ${scaledFontSize})`
+            );
+            return `height="${pixelValue}px"`;
+          }
+        );
+
+        // mjx-containerのスタイルも調整（必要に応じて）
+        svgHTML = svgHTML.replace(
+          /<mjx-container([^>]*)>/g,
+          (match: string, attributes: string) => {
+            // mjx-containerのスタイルがあればピクセル単位に変換
+            let updatedAttributes = attributes;
+
+            // data-mjx-texclass など他の属性はそのまま保持
+            // widthやheightがstyle属性に含まれている場合も変換
+            updatedAttributes = updatedAttributes.replace(
+              /style="([^"]*)"/g,
+              (_styleMatch: string, styleContent: string) => {
+                let updatedStyleContent = styleContent;
+
+                // style内のwidth/height変換
+                updatedStyleContent = updatedStyleContent.replace(
+                  /width:\s*([0-9.]+)(ex|em)/g,
+                  (_cssMatch: string, value: string, unit: string) => {
+                    const numValue = parseFloat(value);
+                    const pixelValue =
+                      unit === "ex" ? numValue * (scaledFontSize * 0.5) : numValue * scaledFontSize;
+                    console.log(
+                      `Converting CSS width: width: ${value}${unit} -> width: ${pixelValue}px`
+                    );
+                    return `width: ${pixelValue}px`;
+                  }
+                );
+
+                updatedStyleContent = updatedStyleContent.replace(
+                  /height:\s*([0-9.]+)(ex|em)/g,
+                  (_cssMatch: string, value: string, unit: string) => {
+                    const numValue = parseFloat(value);
+                    const pixelValue =
+                      unit === "ex" ? numValue * (scaledFontSize * 0.5) : numValue * scaledFontSize;
+                    console.log(
+                      `Converting CSS height: height: ${value}${unit} -> height: ${pixelValue}px`
+                    );
+                    return `height: ${pixelValue}px`;
+                  }
+                );
+
+                return `style="${updatedStyleContent}"`;
+              }
+            );
+
+            return `<mjx-container${updatedAttributes}>`;
+          }
+        );
+
+        console.log(
+          `Enhanced SVG with scaledFontSize=${scaledFontSize}px, color=${color}:`,
+          svgHTML.substring(0, 300)
+        );
+        return svgHTML;
+      } else {
+        return `<span style="color: ${color}; font-size: ${fontSize}px;">${latex}</span>`;
+      }
+    } catch (error) {
+      console.error("MathJax rendering failed:", error);
+      return `<span style="color: ${color}; font-size: ${fontSize}px;">Error: ${latex}</span>`;
+    }
+  };
+
+  // 数式を描画
+  console.log(
+    `🎨 renderOverlayToCanvas: processing ${formulas.length} formulas for frame ${currentFrame}`
+  );
+  for (const formula of formulas) {
+    console.log(`🧮 Processing formula:`, formula);
+    const animationState = calculateAnimationProgress(formula, currentFrame);
+    console.log(`🧮 Animation state:`, animationState);
+    if (!animationState.visible) {
+      console.log(`🧮 Formula not visible, skipping`);
+      continue;
+    }
+
+    const screenX = formula.position.x * exportWidth;
+    const screenY = formula.position.y * exportHeight;
+    console.log(`🧮 Screen position: ${screenX}, ${screenY}`);
+
+    try {
+      // 数式をHTMLに変換
+      const html = await renderMathToHTML(
+        formula.content,
+        formula.style.fontSize,
+        formula.style.color
+      );
+      console.log(`🧮 Rendered HTML:`, html);
+
+      // HTMLを一時的なDIVに描画してcanvasに変換
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = html;
+      tempDiv.style.position = "absolute";
+      tempDiv.style.left = "-9999px";
+      tempDiv.style.fontSize = `${formula.style.fontSize}px`;
+      tempDiv.style.color = formula.style.color;
+      tempDiv.style.fontFamily = "inherit";
+      tempDiv.style.lineHeight = "1.2";
+      tempDiv.style.textAlign = "center";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (tempDiv.style as any).webkitFontSmoothing = "antialiased";
+      tempDiv.style.textRendering = "optimizeLegibility";
+
+      console.log(`🎨 SVG with embedded styles ready for canvas rendering: ${tempDiv.outerHTML}`);
+      document.body.appendChild(tempDiv);
+
+      // SVGをcanvasに描画
+      const svgElement = tempDiv.querySelector("svg");
+      if (svgElement) {
+        // 描画アニメーションを適用
+        let processedSvg = svgElement;
+        if (formula.animation?.type === "draw") {
+          const progress = animationState.enterProgress || animationState.progress;
+          const drawOptions = formula.animation.drawOptions;
+          const processedElement = applySVGDrawAnimation(
+            tempDiv,
+            progress,
+            drawOptions,
+            formula.style.color // 色を渡す
+          );
+          const newSvgElement = processedElement.querySelector("svg");
+          if (newSvgElement) {
+            processedSvg = newSvgElement;
+          }
+        }
+
+        const svgData = new XMLSerializer().serializeToString(processedSvg);
+        console.log(`🎨 Serialized SVG data (first 200 chars):`, svgData.substring(0, 200));
+
+        const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+        const svgUrl = URL.createObjectURL(svgBlob);
+
+        try {
+          console.log(`🎨 Creating image from SVG URL...`);
+          const svgImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+              console.log(`✅ SVG image loaded: ${img.width}x${img.height}`);
+              resolve(img);
+            };
+            img.onerror = (error) => {
+              console.error(`❌ SVG image load failed:`, error);
+              reject(error);
+            };
+            img.src = svgUrl;
+          });
+
+          ctx.drawImage(svgImg, screenX, screenY);
+
+          URL.revokeObjectURL(svgUrl);
+          console.log(`✅ Successfully rendered formula SVG at (${screenX}, ${screenY})`);
+        } catch (error) {
+          console.warn("Failed to render formula SVG:", error);
+        }
+      } else {
+        // SVGが見つからない場合はCanvas上に直接テキストを描画
+        console.log("No SVG found, drawing text directly to canvas");
+        ctx.save();
+        ctx.fillStyle = formula.style.color;
+        ctx.font = `${formula.style.fontSize}px Arial`;
+        ctx.textAlign = "center";
+        ctx.fillText(formula.content, screenX, screenY);
+        ctx.restore();
+        console.log(
+          `✅ Rendered formula as text at (${screenX}, ${screenY}): "${formula.content}"`
+        );
+      }
+
+      document.body.removeChild(tempDiv);
+    } catch (error) {
+      console.error("Error rendering formula:", error);
+    }
+  }
+
+  // 字幕を描画
+  for (const subtitle of subtitles) {
+    const animationState = calculateAnimationProgress(subtitle, currentFrame);
+    if (!animationState.visible) continue;
+
+    const screenX = subtitle.position.x * exportWidth;
+    const screenY = subtitle.position.y * exportHeight;
+
+    let displayText = subtitle.text;
+    let opacity = subtitle.style.opacity;
+
+    // アニメーション効果
+    switch (subtitle.animation?.type) {
+      case "typewriter":
+        displayText = getTypewriterText(
+          subtitle.text,
+          animationState.enterProgress || animationState.progress
+        );
+        break;
+      case "fade":
+        opacity =
+          subtitle.style.opacity * (animationState.enterProgress || animationState.progress);
+        break;
+    }
+
+    // 文字描画
+    ctx.globalAlpha = opacity * animationState.progress;
+    ctx.fillStyle = subtitle.style.color;
+    ctx.font = `${subtitle.style.fontWeight || "normal"} ${subtitle.style.fontSize}px ${
+      subtitle.style.fontFamily || "Arial"
+    }`;
+    ctx.textAlign = (subtitle.style.textAlign as CanvasTextAlign) || "center";
+    ctx.fillText(displayText, screenX, screenY);
+    ctx.globalAlpha = 1;
+  }
 };

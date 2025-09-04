@@ -16,10 +16,17 @@ export interface FormulaElement {
     scale: number;
   };
   animation?: {
-    type: "typewriter" | "fade" | "slide" | "scale" | "none";
+    type: "fade" | "slide" | "scale" | "draw" | "none";
     duration: number; // アニメーション時間（フレーム数）
     delay?: number; // アニメーション開始遅延（フレーム数）
     easing?: "linear" | "ease-in" | "ease-out" | "ease-in-out";
+    // drawアニメーション用のオプション
+    drawOptions?: {
+      sequentialChars: boolean; // true: 文字を順番に表示, false: 全文字同時
+      strokeDuration: number; // 輪郭描画の継続時間（0-1の比率）
+      fillDuration: number; // fill復元の継続時間（0-1の比率）
+      overlapRatio?: number; // 文字間の重複率（0-1、0.3なら前の文字の70%完了時点で次開始）
+    };
   };
   exitAnimation?: {
     type: "fade" | "slide" | "scale" | "none";

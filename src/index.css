@@ -29,6 +29,11 @@ body {
   -moz-user-select: none;
 }
 
+mjx-container {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
 /* Custom component styles */
 .slider {
   -webkit-appearance: none;

@@ -857,6 +857,8 @@ function App() {
                           }}
                           stateManager={stateManager}
                           calculator={stateManager?.getComputeCalculator() || null}
+                          formulas={formulas}
+                          subtitles={subtitles}
                         />
                       </div>
                     )}

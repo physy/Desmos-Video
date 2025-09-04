@@ -283,7 +283,6 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
             formulas={formulas}
             subtitles={subtitles}
             currentFrame={currentFrame}
-            graphBounds={graphBounds || { left: -10, right: 10, top: 10, bottom: -10 }}
             containerWidth={containerSize.width}
             containerHeight={containerSize.height}
             exportWidth={exportWidth}
