@@ -20,12 +20,7 @@ export function getBlankDesmosState(): DesmosState {
   };
 }
 import type { Calculator, DesmosState } from "../types/desmos";
-import type {
-  StateEvent,
-  ContinuousEvent,
-  UnifiedEvent,
-  VideoExportSettings,
-} from "../types/timeline";
+import type { StateEvent, UnifiedEvent, VideoExportSettings } from "../types/timeline";
 import { deepCopy } from "./deepCopy";
 
 // デバッグモードのフラグ
@@ -81,7 +76,6 @@ export class StateManager {
   }
   private timeline: UnifiedEvent[];
   private stateEvents: StateEvent[];
-  private continuousEvents: ContinuousEvent[];
 
   // 計算用calculator（非表示、state計算専用）
   private computeCalculator: Calculator | null = null;
@@ -89,19 +83,13 @@ export class StateManager {
   // 状態キャッシュ（DesmosStateとスクリーンショット）
   private stateCache: Map<number, { state: DesmosState; screenshot?: Promise<string> }> = new Map();
 
-  constructor(
-    timeline: UnifiedEvent[] = [],
-    stateEvents: StateEvent[] = [],
-    continuousEvents: ContinuousEvent[] = []
-  ) {
+  constructor(timeline: UnifiedEvent[] = [], stateEvents: StateEvent[] = []) {
     this.timeline = [...timeline].sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0));
     this.stateEvents = [...stateEvents].sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0));
-    this.continuousEvents = continuousEvents;
 
     debugLog("StateManagerV2 initialized with:", {
       timelineEvents: this.timeline.length,
       stateEvents: this.stateEvents.length,
-      continuousEvents: this.continuousEvents.length,
     });
   }
 
@@ -699,10 +687,9 @@ let stateManagerInstance: StateManager | null = null;
 
 export function createStateManager(
   timeline: UnifiedEvent[] = [],
-  stateEvents: StateEvent[] = [],
-  continuousEvents: ContinuousEvent[] = []
+  stateEvents: StateEvent[] = []
 ): StateManager {
-  stateManagerInstance = new StateManager(timeline, stateEvents, continuousEvents);
+  stateManagerInstance = new StateManager(timeline, stateEvents);
   return stateManagerInstance;
 }
 

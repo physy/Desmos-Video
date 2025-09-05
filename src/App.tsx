@@ -125,7 +125,6 @@ function App() {
   const INITIAL_PROJECT: AnimationProject = {
     timeline: [],
     stateEvents: [],
-    continuousEvents: [],
     durationFrames: 300,
     fps: 30,
     graphSettings: DEFAULT_GRAPH_SETTINGS,
@@ -456,7 +455,6 @@ function App() {
     const initialProject: AnimationProject = {
       timeline: [],
       stateEvents: [],
-      continuousEvents: [],
       durationFrames: 300, // 10秒（30fps）
       fps: 30,
       graphSettings: {

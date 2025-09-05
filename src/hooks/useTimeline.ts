@@ -1,11 +1,6 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import type { Calculator, GraphingCalculatorOptions } from "../types/desmos";
-import type {
-  TimelineEvent,
-  ContinuousEvent,
-  AnimationProject,
-  UnifiedEvent,
-} from "../types/timeline";
+import type { TimelineEvent, AnimationProject, UnifiedEvent } from "../types/timeline";
 import { useStateManager } from "./useStateManager";
 
 // UnifiedEventをTimelineEventに変換する関数
@@ -103,7 +98,6 @@ export const useTimeline = (
   const [project, setProject] = useState<AnimationProject>({
     timeline: [],
     stateEvents: [],
-    continuousEvents: [],
     durationFrames: 300,
     fps: 30,
   });
@@ -340,16 +334,6 @@ export const useTimeline = (
     [addEventToStateManager]
   );
 
-  // 連続イベントを追加
-  const addContinuousEvent = useCallback((event: ContinuousEvent) => {
-    setProject((prev) => ({
-      ...prev,
-      continuousEvents: [...prev.continuousEvents, event],
-    }));
-
-    console.log(`[useTimeline] Continuous event added:`, event);
-  }, []);
-
   // イベントを削除
   const removeEvent = useCallback(
     (eventId: string) => {
@@ -489,7 +473,6 @@ export const useTimeline = (
     addStateEvent,
     removeStateEvent,
     captureCurrentState,
-    addContinuousEvent,
     removeEvent,
     clearCache,
     getDebugInfo,

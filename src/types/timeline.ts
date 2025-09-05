@@ -157,17 +157,6 @@ export interface StateEvent {
 // 統合されたタイムラインアイテム
 export type TimelineItem = TimelineEvent | StateEvent | ExpressionEvent;
 
-export interface ContinuousEvent {
-  startFrame: number;
-  durationFrames: number;
-  variable: string;
-  startValue: number;
-  endValue: number;
-  easingFunction?: (t: number) => number;
-  id?: string;
-  active?: boolean;
-}
-
 export interface AnimationEvent {
   frame: number;
   type: "animation";
@@ -184,7 +173,6 @@ import type { GraphingCalculatorOptions } from "./desmos";
 export interface AnimationProject {
   timeline: TimelineEvent[];
   stateEvents: StateEvent[];
-  continuousEvents: ContinuousEvent[];
   durationFrames: number;
   fps?: number;
   graphSettings?: GraphSettings;
