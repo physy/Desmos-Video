@@ -680,9 +680,31 @@ function App() {
       label: "ヘルプ",
       items: [
         {
+          label: "GitHub",
+          onClick: () => {
+            window.open("https://github.com/physy/Desmos-Video", "_blank");
+            closeAllMenus();
+          },
+        },
+        {
+          label: "Desmos Calculator",
+          onClick: () => {
+            window.open("https://www.desmos.com/calculator", "_blank");
+            closeAllMenus();
+          },
+        },
+        {
+          label: "Desmos 3D",
+          onClick: () => {
+            window.open("https://www.desmos.com/3d", "_blank");
+            closeAllMenus();
+          },
+        },
+        { type: "separator" as const },
+        {
           label: "バージョン情報",
           onClick: () => {
-            alert("Desmos Video Creator v2.0");
+            alert("Desmos Video Creator v1.0");
             closeAllMenus();
           },
         },
@@ -975,7 +997,7 @@ function App() {
               {openMenus.file && (
                 <div
                   data-menu-dropdown
-                  className="absolute left-0 mt-1 w-48 bg-white border border-gray-200 rounded shadow-lg z-10"
+                  className="absolute left-0 mt-1 w-48 bg-white border border-gray-200 rounded shadow-lg z-50"
                 >
                   {menuStructure.file.items.map((item, idx) => {
                     if ("type" in item && item.type === "separator") {
