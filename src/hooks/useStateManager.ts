@@ -32,6 +32,8 @@ export function useStateManager({
   const stateManagerRef = useRef<StateManager | null>(null);
   const computeCalculatorRef = useRef<Calculator | null>(null);
   const computeDivRef = useRef<HTMLDivElement | null>(null);
+  const evaluationCalculatorRef = useRef<Calculator | null>(null);
+  const evaluationDivRef = useRef<HTMLDivElement | null>(null);
   const [desmosReady, setDesmosReady] = useState(false);
 
   // Desmosライブラリの準備状況をチェック
@@ -158,6 +160,8 @@ export function useStateManager({
         evaluationCalculator = window.Desmos.GraphingCalculator(evaluationDiv, finalOptions);
         console.log("[useStateManager] Creating 2D evaluation calculator");
       }
+      evaluationCalculatorRef.current = evaluationCalculator;
+      evaluationDivRef.current = evaluationDiv;
 
       // StateManagerに評価専用calculatorも設定
       if (stateManagerRef.current) {
@@ -188,7 +192,7 @@ export function useStateManager({
 
     console.log("[useStateManager] Calculator options changed, recreating compute calculator...");
 
-    // 既存のcomputeCalculatorとDOMを完全に破棄
+    // 既存のcomputeCalculator,evaluationCalculatorとDOMを完全に破棄
     try {
       if (computeCalculatorRef.current) {
         console.log("[useStateManager] Destroying old compute calculator...");
@@ -196,10 +200,21 @@ export function useStateManager({
         computeCalculatorRef.current = null;
       }
 
+      if (evaluationCalculatorRef.current) {
+        console.log("[useStateManager] Destroying old evaluation calculator...");
+        evaluationCalculatorRef.current.destroy();
+        evaluationCalculatorRef.current = null;
+      }
+
       // 既存のdivも削除
       if (computeDivRef.current && computeDivRef.current.parentNode) {
         computeDivRef.current.parentNode.removeChild(computeDivRef.current);
         computeDivRef.current = null;
+      }
+
+      if (evaluationDivRef.current && evaluationDivRef.current.parentNode) {
+        evaluationDivRef.current.parentNode.removeChild(evaluationDivRef.current);
+        evaluationDivRef.current = null;
       }
     } catch (error) {
       console.error("[useStateManager] Error destroying old compute calculator:", error);
@@ -248,6 +263,7 @@ export function useStateManager({
         stateManagerRef.current.setComputeCalculator(computeCalculator);
         console.log("[useStateManager] New compute calculator set to StateManager");
       }
+      computeDivRef.current = computeDiv;
 
       // 評価専用calculatorも再作成
       const evaluationDiv = document.createElement("div");
@@ -264,12 +280,14 @@ export function useStateManager({
         evaluationCalculator = window.Desmos.GraphingCalculator(evaluationDiv, finalOptions);
         console.log("[useStateManager] Recreating 2D evaluation calculator");
       }
+      evaluationCalculatorRef.current = evaluationCalculator;
 
       // StateManagerに評価専用calculatorも設定
       if (stateManagerRef.current) {
         stateManagerRef.current.setEvaluationCalculator(evaluationCalculator);
         console.log("[useStateManager] New evaluation calculator set to StateManager");
       }
+      evaluationDivRef.current = evaluationDiv;
     } catch (error) {
       console.error("[useStateManager] Failed to recreate compute calculator:", error);
     }
@@ -294,6 +312,10 @@ export function useStateManager({
           computeCalculatorRef.current.destroy();
           computeCalculatorRef.current = null;
         }
+        if (evaluationCalculatorRef.current) {
+          evaluationCalculatorRef.current.destroy();
+          evaluationCalculatorRef.current = null;
+        }
       } catch (error) {
         console.error("[useStateManager] Error destroying compute calculator on unmount:", error);
       }
@@ -302,6 +324,11 @@ export function useStateManager({
       if (computeDivRef.current && computeDivRef.current.parentNode) {
         computeDivRef.current.parentNode.removeChild(computeDivRef.current);
         computeDivRef.current = null;
+      }
+
+      if (evaluationDivRef.current && evaluationDivRef.current.parentNode) {
+        evaluationDivRef.current.parentNode.removeChild(evaluationDivRef.current);
+        evaluationDivRef.current = null;
       }
     };
   }, []);

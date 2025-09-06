@@ -286,7 +286,7 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
       // フレームを書き込み
       for (let i = 0; i < durationFrames; i++) {
         setExportProgress(Math.round((i / durationFrames) * 100));
-        await stateManager.applyStateAtFrame(i, calculator);
+        await stateManager.applyStateAtFrame(i, calculator, false);
 
         const pixelRatio = advanced?.targetPixelRatio ?? 1;
         const width = Math.round((resolution.width ?? 1920) * pixelRatio);

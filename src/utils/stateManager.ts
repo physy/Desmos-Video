@@ -144,7 +144,7 @@ export class StateManager {
   }
 
   // 指定時刻の状態とスクリーンショットを計算して取得
-  async getStateAtFrame(frame: number): Promise<DesmosState> {
+  async getStateAtFrame(frame: number, getScreenshot: boolean = true): Promise<DesmosState> {
     if (!this.computeCalculator) {
       throw new Error("Compute calculator not set. Call setComputeCalculator() first.");
     }
@@ -189,38 +189,43 @@ export class StateManager {
       }
     }
 
-    // 5. スクリーンショット取得
-    let width = 1920;
-    let height = 1080;
-    let targetPixelRatio = 1;
-    let backgroundColor = "#fff";
-    if (this._videoSettings) {
-      if (this._videoSettings.resolution) {
-        width = this._videoSettings.resolution.width ?? width;
-        height = this._videoSettings.resolution.height ?? height;
+    if (getScreenshot) {
+      // 5. スクリーンショット取得
+      let width = 1920;
+      let height = 1080;
+      let targetPixelRatio = 1;
+      let backgroundColor = "#fff";
+      if (this._videoSettings) {
+        if (this._videoSettings.resolution) {
+          width = this._videoSettings.resolution.width ?? width;
+          height = this._videoSettings.resolution.height ?? height;
+        }
+        if (this._videoSettings.advanced) {
+          targetPixelRatio = this._videoSettings.advanced.targetPixelRatio ?? targetPixelRatio;
+          backgroundColor = this._videoSettings.advanced.backgroundColor ?? backgroundColor;
+        }
       }
-      if (this._videoSettings.advanced) {
-        targetPixelRatio = this._videoSettings.advanced.targetPixelRatio ?? targetPixelRatio;
-        backgroundColor = this._videoSettings.advanced.backgroundColor ?? backgroundColor;
-      }
-    }
-    width = Math.round(width * targetPixelRatio);
-    height = Math.round(height * targetPixelRatio);
-    let screenshot: Promise<string> | undefined = undefined;
-    if (this.computeCalculator && typeof this.computeCalculator.asyncScreenshot === "function") {
-      screenshot = new Promise<string>((resolve) => {
-        // FIXME: スクショ撮影前に別の場所でstateがセットされるとうまく撮影できない（特にactionが絡む時）
-        this.computeCalculator!.setState(state);
-        this.computeCalculator!.controller.evaluator.notifyWhenSynced(() => {
-          this.computeCalculator!.controller.getGrapher().asyncScreenshot(
-            { width, height, showLabels: true, targetPixelRatio },
-            (url: string) => resolve(url)
-          );
+      width = Math.round(width * targetPixelRatio);
+      height = Math.round(height * targetPixelRatio);
+      let screenshot: Promise<string> | undefined = undefined;
+      if (this.computeCalculator && typeof this.computeCalculator.asyncScreenshot === "function") {
+        screenshot = new Promise<string>((resolve) => {
+          // FIXME: スクショ撮影前に別の場所でstateがセットされるとうまく撮影できない（特にactionが絡む時）
+          this.computeCalculator!.setState(state);
+          this.computeCalculator!.controller.evaluator.notifyWhenSynced(() => {
+            this.computeCalculator!.controller.getGrapher().asyncScreenshot(
+              { width, height, showLabels: true, targetPixelRatio },
+              (url: string) => resolve(url)
+            );
+          });
         });
-      });
+      }
+      this.stateCache.set(frame, { state: deepCopy(state), screenshot });
+      debugLog(`State and screenshot cached for frame ${frame}`);
+    } else {
+      this.stateCache.set(frame, { state: deepCopy(state), screenshot: undefined });
+      debugLog(`State cached for frame ${frame}`);
     }
-    this.stateCache.set(frame, { state: deepCopy(state), screenshot });
-    debugLog(`State and screenshot cached for frame ${frame}`);
     return deepCopy(state);
   }
 
@@ -311,8 +316,12 @@ export class StateManager {
   }
 
   // 指定時刻の状態を表示用calculatorに適用
-  async applyStateAtFrame(frame: number, displayCalculator: Calculator): Promise<void> {
-    const state = await this.getStateAtFrame(frame);
+  async applyStateAtFrame(
+    frame: number,
+    displayCalculator: Calculator,
+    getScreenshot: boolean = true
+  ): Promise<void> {
+    const state = await this.getStateAtFrame(frame, getScreenshot);
     this.applyStateToCalculator(state, displayCalculator);
     debugLog(`State applied to display calculator at frame ${frame}`);
   }

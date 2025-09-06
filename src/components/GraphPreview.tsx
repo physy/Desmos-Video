@@ -166,7 +166,7 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
 
       setLoading(true);
       // 指定時刻の状態を計算用calculatorに適用
-      await stateManager.applyStateAtFrame(currentFrame, computeCalculator);
+      await stateManager.applyStateAtFrame(currentFrame, computeCalculator, false);
 
       // StateManagerのvideoSettingsを優先して取得
       const effectiveSettings = stateManager?.videoSettings ?? videoSettings;
