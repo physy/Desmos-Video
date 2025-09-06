@@ -118,7 +118,6 @@ export const useTimeline = (
     addStateEvent: addStateEventToStateManager,
     createStateEventFromCurrentCalculator,
     clearCache,
-    debugStateCalculation,
     getDebugInfo: getStateManagerDebugInfo,
   } = useStateManager({
     displayCalculator: calculator,
@@ -185,10 +184,7 @@ export const useTimeline = (
       setCurrentFrame(frame);
 
       try {
-        // StateManagerを使用して状態を適用
-        await stateManager.getStateAtFrame(frame);
         lastAppliedFrameRef.current = frame;
-
         console.log(`[useTimeline] Seeked to frame ${frame}`);
       } catch (error) {
         console.error(`[useTimeline] Failed to seek to frame ${frame}:`, error);
@@ -451,15 +447,6 @@ export const useTimeline = (
     };
   }, [currentFrame, project, getStateManagerDebugInfo]);
 
-  // 特定時刻でのデバッグ情報
-  const getDebugAtFrame = useCallback(
-    async (frame: number) => {
-      if (!stateManager) return null;
-      return await debugStateCalculation(frame);
-    },
-    [stateManager, debugStateCalculation]
-  );
-
   return {
     project,
     setProject,
@@ -476,7 +463,6 @@ export const useTimeline = (
     removeEvent,
     clearCache,
     getDebugInfo,
-    getDebugAtFrame,
     updateUnifiedEvent,
     getUnifiedEvent,
     stateManager,

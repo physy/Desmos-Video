@@ -171,7 +171,6 @@ function App() {
     captureCurrentState,
     clearCache,
     getDebugInfo,
-    getDebugAtFrame,
     setProject,
     stateManager,
     selectedStateId,
@@ -939,10 +938,6 @@ function App() {
     const debugInfo = getDebugInfo();
     console.log("Debug Info:", debugInfo);
 
-    // 現在フレーム周辺のデバッグ情報
-    const frameDebug = await getDebugAtFrame(currentFrame);
-    console.log(`Debug at frame ${currentFrame}:`, frameDebug);
-
     const stateManagerDebug = debugInfo.stateManagerDebug as Record<string, unknown>;
 
     console.log(
@@ -952,12 +947,9 @@ function App() {
         `Timeline Events: ${debugInfo.timelineEventsCount}\n` +
         `State Events: ${debugInfo.stateEventsCount}\n\n` +
         `=== StateManager情報 ===\n` +
-        `StateManager Debug: ${JSON.stringify(stateManagerDebug, null, 2)}\n\n` +
-        `=== 現在フレーム (${currentFrame}) の状況 ===\n` +
-        `Frame Debug Result: ${frameDebug ? "Success" : "Failed"}\n` +
-        (frameDebug ? `Applied Events: ${frameDebug.eventsApplied.length}` : "")
+        `StateManager Debug: ${JSON.stringify(stateManagerDebug, null, 2)}\n\n`
     );
-  }, [getDebugInfo, getDebugAtFrame, currentFrame]);
+  }, [getDebugInfo, currentFrame]);
 
   // 計算済み領域の情報を取得（StateManager用）
   const calculatedRegions: Array<{ start: number; end: number }> = [];

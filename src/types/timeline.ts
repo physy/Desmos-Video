@@ -95,7 +95,7 @@ export interface UnifiedEvent {
   };
   // Animation event properties - フレーム数基準
   animation?: {
-    type: "variable" | "property" | "action";
+    type: "variable" | "property" | "action" | "bounds";
     targetId: string; // 対象のexpression ID
     durationFrames: number; // アニメーションフレーム数
 
@@ -118,6 +118,28 @@ export interface UnifiedEvent {
     action?: {
       steps: number; // 実行するステップ数
       frameInterval: number; // 何フレームごとに実行するか
+    };
+
+    // バウンズアニメーション用
+    bounds?: {
+      // スケールアニメーション（アスペクト比保持）
+      scale?: {
+        endValue: number; // 終了時のスケール倍率
+        centerX?: number; // スケールの中心X座標（デフォルト: 現在のビュー中心）
+        centerY?: number; // スケールの中心Y座標（デフォルト: 現在のビュー中心）
+      };
+
+      // 並進移動
+      translation?: {
+        endX: number; // 終了時のX位置
+        endY: number; // 終了時のY位置
+        mode: "displacement" | "absolute"; // 変位指定 or 絶対座標指定
+      };
+
+      // 直接的なバウンズ指定（従来の動作）
+      direct?: {
+        endBounds: { left: number; right: number; top: number; bottom: number };
+      };
     };
 
     // イージング関数

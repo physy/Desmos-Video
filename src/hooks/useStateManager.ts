@@ -18,10 +18,6 @@ interface UseStateManagerReturn {
   addStateEvent: (stateEvent: StateEvent) => void;
   createStateEventFromCurrentCalculator: (frame: number, description?: string) => StateEvent | null;
   clearCache: () => void;
-  debugStateCalculation: (frame: number) => Promise<{
-    eventsApplied: Array<UnifiedEvent | StateEvent>;
-    finalState: DesmosState;
-  } | null>;
   getDebugInfo: () => (Record<string, unknown> | null) & {
     computeCalculatorSet: boolean;
     stateManagerExists: boolean;
@@ -146,6 +142,28 @@ export function useStateManager({
         stateManagerRef.current.setComputeCalculator(computeCalculator);
         console.log("[useStateManager] Compute calculator set to StateManager");
       }
+
+      // 評価専用calculatorも作成
+      const evaluationDiv = document.createElement("div");
+      evaluationDiv.style.display = "none";
+      evaluationDiv.style.width = "400px";
+      evaluationDiv.style.height = "300px";
+      document.body.appendChild(evaluationDiv);
+
+      let evaluationCalculator: Calculator;
+      if (selectedGraphType === "3d") {
+        evaluationCalculator = window.Desmos.Calculator3D?.(evaluationDiv, finalOptions);
+        console.log("[useStateManager] Creating 3D evaluation calculator");
+      } else {
+        evaluationCalculator = window.Desmos.GraphingCalculator(evaluationDiv, finalOptions);
+        console.log("[useStateManager] Creating 2D evaluation calculator");
+      }
+
+      // StateManagerに評価専用calculatorも設定
+      if (stateManagerRef.current) {
+        stateManagerRef.current.setEvaluationCalculator(evaluationCalculator);
+        console.log("[useStateManager] Evaluation calculator set to StateManager");
+      }
     } catch (error) {
       console.error("[useStateManager] Failed to create compute calculator:", error);
     }
@@ -229,6 +247,28 @@ export function useStateManager({
       if (stateManagerRef.current) {
         stateManagerRef.current.setComputeCalculator(computeCalculator);
         console.log("[useStateManager] New compute calculator set to StateManager");
+      }
+
+      // 評価専用calculatorも再作成
+      const evaluationDiv = document.createElement("div");
+      evaluationDiv.style.display = "none";
+      evaluationDiv.style.width = "400px";
+      evaluationDiv.style.height = "300px";
+      document.body.appendChild(evaluationDiv);
+
+      let evaluationCalculator: Calculator;
+      if (selectedGraphType === "3d") {
+        evaluationCalculator = window.Desmos.Calculator3D?.(evaluationDiv, finalOptions);
+        console.log("[useStateManager] Recreating 3D evaluation calculator");
+      } else {
+        evaluationCalculator = window.Desmos.GraphingCalculator(evaluationDiv, finalOptions);
+        console.log("[useStateManager] Recreating 2D evaluation calculator");
+      }
+
+      // StateManagerに評価専用calculatorも設定
+      if (stateManagerRef.current) {
+        stateManagerRef.current.setEvaluationCalculator(evaluationCalculator);
+        console.log("[useStateManager] New evaluation calculator set to StateManager");
       }
     } catch (error) {
       console.error("[useStateManager] Failed to recreate compute calculator:", error);
@@ -341,18 +381,6 @@ export function useStateManager({
     stateManagerRef.current.clearCache();
   }, []);
 
-  // デバッグ用：状態計算過程を表示
-  const debugStateCalculation = useCallback(async (frame: number) => {
-    if (!stateManagerRef.current) return null;
-
-    try {
-      return await stateManagerRef.current.debugStateCalculation(frame);
-    } catch (error) {
-      console.error(`[useStateManager] Debug calculation failed for frame ${frame}:`, error);
-      return null;
-    }
-  }, []);
-
   // デバッグ情報を取得
   const getDebugInfo = useCallback(() => {
     if (!stateManagerRef.current) return null;
@@ -368,7 +396,6 @@ export function useStateManager({
     addStateEvent,
     createStateEventFromCurrentCalculator,
     clearCache,
-    debugStateCalculation,
     getDebugInfo: () => {
       const baseDebug = getDebugInfo();
       return {

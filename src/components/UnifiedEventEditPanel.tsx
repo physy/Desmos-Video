@@ -244,12 +244,15 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
           <select
             value={currentAnimation.type || "variable"}
             onChange={(e) => {
-              const newType = e.target.value as "variable" | "property" | "action";
+              const newType = e.target.value as "variable" | "property" | "action" | "bounds";
               const newAnimation = {
                 type: newType,
                 targetId: currentAnimation.targetId || "",
-                durationFrames: currentAnimation.durationFrames || 30,
-                easing: currentAnimation.easing || "linear",
+                durationFrames:
+                  newType === "action"
+                    ? 10 * 1 // デフォルト: steps=10, frameInterval=1
+                    : currentAnimation.durationFrames || 30,
+                easing: newType === "action" ? undefined : currentAnimation.easing || "linear",
                 ...(newType === "variable" && {
                   variable: { name: "", startValue: 0, endValue: 1, autoDetect: false },
                 }),
@@ -259,6 +262,12 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                 ...(newType === "action" && {
                   action: { steps: 10, frameInterval: 1 },
                 }),
+                ...(newType === "bounds" && {
+                  bounds: {
+                    scale: { endValue: 2 },
+                    translation: { endX: 0, endY: 0, mode: "displacement" as const },
+                  },
+                }),
               };
               handleEventChange({ animation: newAnimation });
             }}
@@ -267,43 +276,50 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
             <option value="variable">変数値アニメーション</option>
             <option value="property">プロパティアニメーション</option>
             <option value="action">アクション実行</option>
+            <option value="bounds">表示範囲アニメーション</option>
           </select>
         </div>
 
-        {/* 対象Expression ID */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">対象Expression ID</label>
-          <input
-            type="text"
-            value={currentAnimation.targetId || ""}
-            onChange={(e) => {
-              handleEventChange({
-                animation: { ...currentAnimation, targetId: e.target.value },
-              });
-            }}
-            placeholder="expression-id"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
+        {/* 対象Expression ID - boundsアニメーション以外で表示 */}
+        {currentAnimation.type !== "bounds" && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              対象Expression ID
+            </label>
+            <input
+              type="text"
+              value={currentAnimation.targetId || ""}
+              onChange={(e) => {
+                handleEventChange({
+                  animation: { ...currentAnimation, targetId: e.target.value },
+                });
+              }}
+              placeholder="expression-id"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        )}
 
-        {/* アニメーション時間 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            アニメーションフレーム数
-          </label>
-          <input
-            type="number"
-            value={currentAnimation.durationFrames || 30}
-            onChange={(e) => {
-              handleEventChange({
-                animation: { ...currentAnimation, durationFrames: parseInt(e.target.value) },
-              });
-            }}
-            step="1"
-            min="1"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
+        {/* アニメーション時間 - actionタイプ以外で表示 */}
+        {currentAnimation.type !== "action" && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              アニメーションフレーム数
+            </label>
+            <input
+              type="number"
+              value={currentAnimation.durationFrames || 30}
+              onChange={(e) => {
+                handleEventChange({
+                  animation: { ...currentAnimation, durationFrames: parseInt(e.target.value) },
+                });
+              }}
+              step="1"
+              min="1"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        )}
 
         {/* 変数アニメーション設定 */}
         {currentAnimation.type === "variable" && (
@@ -514,10 +530,13 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                   value={currentAnimation.action?.steps || 10}
                   onChange={(e) => {
                     const action = currentAnimation.action || { steps: 10, frameInterval: 1 };
+                    const newSteps = parseInt(e.target.value);
+                    const durationFrames = newSteps * action.frameInterval;
                     handleEventChange({
                       animation: {
                         ...currentAnimation,
-                        action: { ...action, steps: parseInt(e.target.value) },
+                        action: { ...action, steps: newSteps },
+                        durationFrames,
                       },
                     });
                   }}
@@ -532,10 +551,13 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                   value={currentAnimation.action?.frameInterval || 1}
                   onChange={(e) => {
                     const action = currentAnimation.action || { steps: 10, frameInterval: 1 };
+                    const newFrameInterval = parseInt(e.target.value);
+                    const durationFrames = action.steps * newFrameInterval;
                     handleEventChange({
                       animation: {
                         ...currentAnimation,
-                        action: { ...action, frameInterval: parseInt(e.target.value) },
+                        action: { ...action, frameInterval: newFrameInterval },
+                        durationFrames,
                       },
                     });
                   }}
@@ -548,31 +570,412 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
             <div className="text-xs text-purple-600">
               指定したIDのexpressionを {currentAnimation.action?.frameInterval || 1} フレームごとに{" "}
               {currentAnimation.action?.steps || 10} ステップ実行します
+              <br />
+              総実行時間:{" "}
+              {(currentAnimation.action?.steps || 10) *
+                (currentAnimation.action?.frameInterval || 1)}{" "}
+              フレーム
             </div>
           </div>
         )}
 
-        {/* イージング設定 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">イージング関数</label>
-          <select
-            value={currentAnimation.easing || "linear"}
-            onChange={(e) => {
-              handleEventChange({
-                animation: {
-                  ...currentAnimation,
-                  easing: e.target.value as "linear" | "ease-in" | "ease-out" | "ease-in-out",
-                },
-              });
-            }}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            <option value="linear">リニア</option>
-            <option value="ease-in">イーズイン</option>
-            <option value="ease-out">イーズアウト</option>
-            <option value="ease-in-out">イーズインアウト</option>
-          </select>
-        </div>
+        {/* バウンズアニメーション設定 */}
+        {currentAnimation.type === "bounds" && (
+          <div className="space-y-4 p-3 border border-orange-200 rounded-lg bg-orange-50">
+            <h5 className="text-sm font-medium text-orange-800">表示範囲アニメーション設定</h5>
+
+            {/* アニメーション方式選択 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                アニメーション方式
+              </label>
+              <div className="space-y-2">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="boundsMode"
+                    checked={
+                      !!currentAnimation.bounds?.scale || !!currentAnimation.bounds?.translation
+                    }
+                    onChange={() => {
+                      handleEventChange({
+                        animation: {
+                          ...currentAnimation,
+                          bounds: {
+                            scale: { endValue: 2 },
+                            translation: { endX: 0, endY: 0, mode: "displacement" as const },
+                          },
+                        },
+                      });
+                    }}
+                    className="mr-2"
+                  />
+                  <span className="text-sm">スケール＋並進移動</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="boundsMode"
+                    checked={!!currentAnimation.bounds?.direct}
+                    onChange={() => {
+                      handleEventChange({
+                        animation: {
+                          ...currentAnimation,
+                          bounds: {
+                            direct: {
+                              endBounds: { left: -5, right: 5, top: 5, bottom: -5 },
+                            },
+                          },
+                        },
+                      });
+                    }}
+                    className="mr-2"
+                  />
+                  <span className="text-sm">直接的なバウンズ指定</span>
+                </label>
+              </div>
+            </div>
+
+            {/* スケール＋並進移動設定 */}
+            {(currentAnimation.bounds?.scale || currentAnimation.bounds?.translation) && (
+              <div className="space-y-4">
+                {/* スケール設定 */}
+                <div className="space-y-3 p-3 border border-blue-200 rounded bg-blue-50">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="enableScale"
+                      checked={!!currentAnimation.bounds?.scale}
+                      onChange={(e) => {
+                        const bounds = currentAnimation.bounds || {};
+                        if (e.target.checked) {
+                          bounds.scale = { endValue: 2 };
+                        } else {
+                          delete bounds.scale;
+                        }
+                        handleEventChange({
+                          animation: { ...currentAnimation, bounds },
+                        });
+                      }}
+                      className="mr-2"
+                    />
+                    <label htmlFor="enableScale" className="text-sm font-medium text-blue-800">
+                      スケールアニメーション（アスペクト比保持）
+                    </label>
+                  </div>
+
+                  {currentAnimation.bounds?.scale && (
+                    <div className="grid grid-cols-1 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          終了スケール
+                        </label>
+                        <input
+                          type="number"
+                          value={currentAnimation.bounds.scale.endValue}
+                          onChange={(e) => {
+                            const bounds = currentAnimation.bounds || {};
+                            const scale = bounds.scale || { endValue: 2 };
+                            scale.endValue = parseFloat(e.target.value);
+                            bounds.scale = scale;
+                            handleEventChange({
+                              animation: { ...currentAnimation, bounds },
+                            });
+                          }}
+                          step="0.1"
+                          min="0.1"
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            中心X（オプション）
+                          </label>
+                          <input
+                            type="number"
+                            value={currentAnimation.bounds.scale.centerX ?? ""}
+                            onChange={(e) => {
+                              const bounds = currentAnimation.bounds || {};
+                              const scale = bounds.scale || { endValue: 2 };
+                              scale.centerX = e.target.value
+                                ? parseFloat(e.target.value)
+                                : undefined;
+                              bounds.scale = scale;
+                              handleEventChange({
+                                animation: { ...currentAnimation, bounds },
+                              });
+                            }}
+                            placeholder="自動"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            中心Y（オプション）
+                          </label>
+                          <input
+                            type="number"
+                            value={currentAnimation.bounds.scale.centerY ?? ""}
+                            onChange={(e) => {
+                              const bounds = currentAnimation.bounds || {};
+                              const scale = bounds.scale || { endValue: 2 };
+                              scale.centerY = e.target.value
+                                ? parseFloat(e.target.value)
+                                : undefined;
+                              bounds.scale = scale;
+                              handleEventChange({
+                                animation: { ...currentAnimation, bounds },
+                              });
+                            }}
+                            placeholder="自動"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+                      <div className="text-xs text-blue-600">
+                        開始スケールは1.0固定（現在のビュー）。終了スケールまでアニメーションします。
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 並進移動設定 */}
+                <div className="space-y-3 p-3 border border-green-200 rounded bg-green-50">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="enableTranslation"
+                      checked={!!currentAnimation.bounds?.translation}
+                      onChange={(e) => {
+                        const bounds = currentAnimation.bounds || {};
+                        if (e.target.checked) {
+                          bounds.translation = { endX: 0, endY: 0, mode: "displacement" as const };
+                        } else {
+                          delete bounds.translation;
+                        }
+                        handleEventChange({
+                          animation: { ...currentAnimation, bounds },
+                        });
+                      }}
+                      className="mr-2"
+                    />
+                    <label
+                      htmlFor="enableTranslation"
+                      className="text-sm font-medium text-green-800"
+                    >
+                      並進移動アニメーション
+                    </label>
+                  </div>
+
+                  {currentAnimation.bounds?.translation && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          移動モード
+                        </label>
+                        <select
+                          value={currentAnimation.bounds.translation.mode}
+                          onChange={(e) => {
+                            const bounds = currentAnimation.bounds || {};
+                            const translation = bounds.translation || {
+                              startX: 0,
+                              startY: 0,
+                              endX: 0,
+                              endY: 0,
+                              mode: "displacement" as const,
+                            };
+                            translation.mode = e.target.value as "displacement" | "absolute";
+                            bounds.translation = translation;
+                            handleEventChange({
+                              animation: { ...currentAnimation, bounds },
+                            });
+                          }}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="displacement">変位指定</option>
+                          <option value="absolute">絶対座標指定</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            終了X
+                          </label>
+                          <input
+                            type="number"
+                            value={currentAnimation.bounds.translation.endX}
+                            onChange={(e) => {
+                              const bounds = currentAnimation.bounds || {};
+                              const translation = bounds.translation || {
+                                endX: 0,
+                                endY: 0,
+                                mode: "displacement" as const,
+                              };
+                              translation.endX = parseFloat(e.target.value);
+                              bounds.translation = translation;
+                              handleEventChange({
+                                animation: { ...currentAnimation, bounds },
+                              });
+                            }}
+                            step="0.1"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            終了Y
+                          </label>
+                          <input
+                            type="number"
+                            value={currentAnimation.bounds.translation.endY}
+                            onChange={(e) => {
+                              const bounds = currentAnimation.bounds || {};
+                              const translation = bounds.translation || {
+                                endX: 0,
+                                endY: 0,
+                                mode: "displacement" as const,
+                              };
+                              translation.endY = parseFloat(e.target.value);
+                              bounds.translation = translation;
+                              handleEventChange({
+                                animation: { ...currentAnimation, bounds },
+                              });
+                            }}
+                            step="0.1"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-green-600">
+                        {currentAnimation.bounds.translation.mode === "displacement"
+                          ? "変位モード: 現在の位置からの相対的な移動量を指定（開始は0）"
+                          : "絶対座標モード: 移動先の絶対座標を指定（開始は現在の中心）"}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 直接的なバウンズ指定設定 */}
+            {currentAnimation.bounds?.direct && (
+              <div className="space-y-3 p-3 border border-gray-200 rounded bg-gray-50">
+                <h6 className="text-sm font-medium text-gray-800">直接的なバウンズ指定</h6>
+
+                <div className="space-y-2">
+                  <div className="text-xs text-gray-600 mb-2">
+                    終了バウンズ（開始は現在のビュー）
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Left</label>
+                      <input
+                        type="number"
+                        value={currentAnimation.bounds.direct.endBounds.left}
+                        onChange={(e) => {
+                          const bounds = currentAnimation.bounds || {};
+                          const direct = bounds.direct || {
+                            endBounds: { left: -5, right: 5, top: 5, bottom: -5 },
+                          };
+                          direct.endBounds.left = parseFloat(e.target.value);
+                          bounds.direct = direct;
+                          handleEventChange({
+                            animation: { ...currentAnimation, bounds },
+                          });
+                        }}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Right</label>
+                      <input
+                        type="number"
+                        value={currentAnimation.bounds.direct.endBounds.right}
+                        onChange={(e) => {
+                          const bounds = currentAnimation.bounds || {};
+                          const direct = bounds.direct || {
+                            endBounds: { left: -5, right: 5, top: 5, bottom: -5 },
+                          };
+                          direct.endBounds.right = parseFloat(e.target.value);
+                          bounds.direct = direct;
+                          handleEventChange({
+                            animation: { ...currentAnimation, bounds },
+                          });
+                        }}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Top</label>
+                      <input
+                        type="number"
+                        value={currentAnimation.bounds.direct.endBounds.top}
+                        onChange={(e) => {
+                          const bounds = currentAnimation.bounds || {};
+                          const direct = bounds.direct || {
+                            endBounds: { left: -5, right: 5, top: 5, bottom: -5 },
+                          };
+                          direct.endBounds.top = parseFloat(e.target.value);
+                          bounds.direct = direct;
+                          handleEventChange({
+                            animation: { ...currentAnimation, bounds },
+                          });
+                        }}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Bottom</label>
+                      <input
+                        type="number"
+                        value={currentAnimation.bounds.direct.endBounds.bottom}
+                        onChange={(e) => {
+                          const bounds = currentAnimation.bounds || {};
+                          const direct = bounds.direct || {
+                            endBounds: { left: -5, right: 5, top: 5, bottom: -5 },
+                          };
+                          direct.endBounds.bottom = parseFloat(e.target.value);
+                          bounds.direct = direct;
+                          handleEventChange({
+                            animation: { ...currentAnimation, bounds },
+                          });
+                        }}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* イージング設定 - actionタイプ以外で表示 */}
+        {currentAnimation.type !== "action" && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">イージング関数</label>
+            <select
+              value={currentAnimation.easing || "linear"}
+              onChange={(e) => {
+                handleEventChange({
+                  animation: {
+                    ...currentAnimation,
+                    easing: e.target.value as "linear" | "ease-in" | "ease-out" | "ease-in-out",
+                  },
+                });
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="linear">リニア</option>
+              <option value="ease-in">イーズイン</option>
+              <option value="ease-out">イーズアウト</option>
+              <option value="ease-in-out">イーズインアウト</option>
+            </select>
+          </div>
+        )}
       </div>
     );
   };
@@ -635,7 +1038,7 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
           >
             <option value="expression">Expression変更</option>
             <option value="bounds">表示範囲変更</option>
-            <option value="animation">変数アニメーション</option>
+            <option value="animation">アニメーション</option>
           </select>
         </div>
 
