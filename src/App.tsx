@@ -705,6 +705,7 @@ function App() {
           label: "バージョン情報",
           onClick: () => {
             alert("Desmos Video Creator v1.0");
+            alert("Desmos Video Creator v1.0");
             closeAllMenus();
           },
         },
