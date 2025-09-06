@@ -209,6 +209,8 @@ export class StateManager {
     let screenshot: Promise<string> | undefined = undefined;
     if (this.computeCalculator && typeof this.computeCalculator.asyncScreenshot === "function") {
       screenshot = new Promise<string>((resolve) => {
+        // FIXME: スクショ撮影前に別の場所でstateがセットされるとうまく撮影できない（特にactionが絡む時）
+        this.computeCalculator!.setState(state);
         this.computeCalculator!.controller.evaluator.notifyWhenSynced(() => {
           this.computeCalculator!.controller.getGrapher().asyncScreenshot(
             { width, height, showLabels: true, targetPixelRatio },
@@ -953,7 +955,41 @@ export class StateManager {
     debugLog("Cache cleared, action cache cleared, and evaluation state reset");
   }
 
-  // 初期状態更新機能は廃止
+  // 個別フレームのキャッシュを削除
+  clearCacheAtFrame(frame: number): boolean {
+    const existed = this.stateCache.has(frame);
+    if (existed) {
+      this.stateCache.delete(frame);
+      debugLog(`Cache cleared for frame ${frame}`);
+    }
+    return existed;
+  }
+
+  // 範囲指定でキャッシュを削除
+  clearCacheInRange(startFrame: number, endFrame: number): number {
+    let deletedCount = 0;
+    for (const frame of this.stateCache.keys()) {
+      if (frame >= startFrame && frame <= endFrame) {
+        this.stateCache.delete(frame);
+        deletedCount++;
+      }
+    }
+    debugLog(`Cache cleared for ${deletedCount} frames in range ${startFrame}-${endFrame}`);
+    return deletedCount;
+  }
+
+  // 指定されたフレーム配列のキャッシュを削除
+  clearCacheForFrames(frames: number[]): number {
+    let deletedCount = 0;
+    for (const frame of frames) {
+      if (this.stateCache.has(frame)) {
+        this.stateCache.delete(frame);
+        deletedCount++;
+      }
+    }
+    debugLog(`Cache cleared for ${deletedCount} specified frames`);
+    return deletedCount;
+  } // 初期状態更新機能は廃止
 
   // タイムラインを取得
   getTimeline(): UnifiedEvent[] {

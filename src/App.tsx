@@ -8,6 +8,7 @@ import { VideoExportPanel } from "./components/VideoExportPanel";
 import { GraphSettingsPanel, type GraphSettings } from "./components/GraphSettingsPanel";
 import { ResizablePanel } from "./components/ResizablePanel";
 import { FormulaEditPanel } from "./components/FormulaEditPanel";
+import { CachePanel } from "./components/CachePanel";
 import { useTimeline } from "./hooks/useTimeline";
 import { useFormulaManager } from "./hooks/useFormulaManager";
 import { useProjectHistory } from "./hooks/useProjectHistory";
@@ -789,7 +790,7 @@ function App() {
   // グラフ表示/プレビュー表示のタブ状態
   const [graphViewTab, setGraphViewTab] = useState<"graph" | "preview">("graph");
   const [activeTab, setActiveTab] = useState<
-    "state" | "events" | "timeline" | "export" | "graph" | "formula"
+    "state" | "events" | "timeline" | "export" | "graph" | "formula" | "cache"
   >("events");
   // 選択状態はuseTimelineで一元管理
   // selectedStateId, setSelectedStateId, selectedEventId, setSelectedEventIdを利用
@@ -1225,6 +1226,16 @@ function App() {
                     >
                       Timeline
                     </button>
+                    <button
+                      onClick={() => setActiveTab("cache")}
+                      className={`flex-1 px-2 py-2 text-xs font-medium ${
+                        activeTab === "cache"
+                          ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      Cache
+                    </button>
                   </div>
 
                   {/* タブコンテンツ */}
@@ -1386,6 +1397,12 @@ function App() {
                             </pre>
                           </div>
                         </div>
+                      </div>
+                    )}
+
+                    {activeTab === "cache" && (
+                      <div className="h-full">
+                        <CachePanel stateManager={stateManager} />
                       </div>
                     )}
                   </div>
