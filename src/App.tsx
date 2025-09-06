@@ -680,9 +680,31 @@ function App() {
       label: "ヘルプ",
       items: [
         {
+          label: "GitHub",
+          onClick: () => {
+            window.open("https://github.com/physy/Desmos-Video", "_blank");
+            closeAllMenus();
+          },
+        },
+        {
+          label: "Desmos Calculator",
+          onClick: () => {
+            window.open("https://www.desmos.com/calculator", "_blank");
+            closeAllMenus();
+          },
+        },
+        {
+          label: "Desmos 3D",
+          onClick: () => {
+            window.open("https://www.desmos.com/3d", "_blank");
+            closeAllMenus();
+          },
+        },
+        { type: "separator" as const },
+        {
           label: "バージョン情報",
           onClick: () => {
-            alert("Desmos Video Creator v2.0");
+            alert("Desmos Video Creator v1.0");
             closeAllMenus();
           },
         },
@@ -962,110 +984,56 @@ function App() {
         <div className="flex items-center">
           {/* メニュー */}
           <div className="flex items-center mr-4">
-            <div className="menu-item relative mr-2">
-              <button
-                className="font-semibold text-gray-700 hover:text-blue-600 focus:outline-none px-2 py-1 rounded"
-                onClick={() => toggleMenu("file")}
-                aria-haspopup="true"
-                aria-expanded={openMenus.file || false}
-              >
-                ファイル
-              </button>
-              {/* ドロップダウンメニュー（新しいメニューシステム） */}
-              {openMenus.file && (
-                <div
-                  data-menu-dropdown
-                  className="absolute left-0 mt-1 w-48 bg-white border border-gray-200 rounded shadow-lg z-10"
+            {/* 統合されたメニュー項目 */}
+            {Object.entries(menuStructure).map(([menuKey, menu]) => (
+              <div key={menuKey} className="menu-item relative mr-2">
+                <button
+                  className="font-semibold text-gray-700 hover:text-blue-600 focus:outline-none px-2 py-1 rounded"
+                  onClick={() => toggleMenu(menuKey)}
+                  aria-haspopup="true"
+                  aria-expanded={openMenus[menuKey] || false}
                 >
-                  {menuStructure.file.items.map((item, idx) => {
-                    if ("type" in item && item.type === "separator") {
-                      return <hr key={idx} className="border-gray-200 my-1" />;
-                    }
-
-                    const menuItem = item as MenuItem;
-
-                    return (
-                      <button
-                        key={idx}
-                        className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center justify-between ${
-                          menuItem.disabled ? "text-gray-400 cursor-not-allowed" : "text-gray-700"
-                        } ${menuItem.checked ? "bg-blue-50 text-blue-600" : ""}`}
-                        onClick={() => {
-                          if (!menuItem.disabled && menuItem.onClick) {
-                            menuItem.onClick();
-                          }
-                        }}
-                        disabled={menuItem.disabled}
-                      >
-                        <span>
-                          {menuItem.checked && "✓ "}
-                          {menuItem.label}
-                        </span>
-                        {menuItem.shortcut && (
-                          <span className="text-xs text-gray-400 ml-2">{menuItem.shortcut}</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            {/* 他のメニュー項目 */}
-            {Object.entries(menuStructure)
-              .filter(([key]) => key !== "file")
-              .map(([menuKey, menu]) => (
-                <div key={menuKey} className="menu-item relative mr-2">
-                  <button
-                    className="font-semibold text-gray-700 hover:text-blue-600 focus:outline-none px-2 py-1 rounded"
-                    onClick={() => toggleMenu(menuKey)}
-                    aria-haspopup="true"
-                    aria-expanded={openMenus[menuKey] || false}
+                  {menu.label}
+                </button>
+                {openMenus[menuKey] && (
+                  <div
+                    data-menu-dropdown
+                    className="absolute left-0 mt-1 w-48 bg-white border border-gray-200 rounded shadow-lg z-50"
                   >
-                    {menu.label}
-                  </button>
-                  {openMenus[menuKey] && (
-                    <div
-                      data-menu-dropdown
-                      className="absolute left-0 mt-1 w-48 bg-white border border-gray-200 rounded shadow-lg z-10"
-                    >
-                      {menu.items.map((item, idx) => {
-                        if ("type" in item && item.type === "separator") {
-                          return <hr key={idx} className="border-gray-200 my-1" />;
-                        }
+                    {menu.items.map((item, idx) => {
+                      if ("type" in item && item.type === "separator") {
+                        return <hr key={idx} className="border-gray-200 my-1" />;
+                      }
 
-                        const menuItem = item as MenuItem;
+                      const menuItem = item as MenuItem;
 
-                        return (
-                          <button
-                            key={idx}
-                            className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center justify-between ${
-                              menuItem.disabled
-                                ? "text-gray-400 cursor-not-allowed"
-                                : "text-gray-700"
-                            } ${menuItem.checked ? "bg-blue-50 text-blue-600" : ""}`}
-                            onClick={() => {
-                              if (!menuItem.disabled && menuItem.onClick) {
-                                menuItem.onClick();
-                              }
-                            }}
-                            disabled={menuItem.disabled}
-                          >
-                            <span>
-                              {menuItem.checked && "✓ "}
-                              {menuItem.label}
-                            </span>
-                            {menuItem.shortcut && (
-                              <span className="text-xs text-gray-400 ml-2">
-                                {menuItem.shortcut}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              ))}
+                      return (
+                        <button
+                          key={idx}
+                          className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center justify-between ${
+                            menuItem.disabled ? "text-gray-400 cursor-not-allowed" : "text-gray-700"
+                          } ${menuItem.checked ? "bg-blue-50 text-blue-600" : ""}`}
+                          onClick={() => {
+                            if (!menuItem.disabled && menuItem.onClick) {
+                              menuItem.onClick();
+                            }
+                          }}
+                          disabled={menuItem.disabled}
+                        >
+                          <span>
+                            {menuItem.checked && "✓ "}
+                            {menuItem.label}
+                          </span>
+                          {menuItem.shortcut && (
+                            <span className="text-xs text-gray-400 ml-2">{menuItem.shortcut}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </header>
