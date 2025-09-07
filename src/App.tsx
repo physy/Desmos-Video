@@ -53,16 +53,35 @@ function App() {
   // メニュー操作関数
   const toggleMenu = (menuKey: string) => {
     setOpenMenus((prev) => {
+      const wasOpen = prev[menuKey];
       // 他のメニューを閉じて、指定されたメニューのみ開閉
       const newState: { [key: string]: boolean } = {};
       Object.keys(prev).forEach((key) => {
         newState[key] = false;
       });
-      newState[menuKey] = !prev[menuKey];
+      newState[menuKey] = !wasOpen;
       return newState;
     });
     // サブメニューもリセット
     setOpenSubmenus({});
+  };
+
+  // ホバー時のメニュー表示（他のメニューが開いている時のみ）
+  const handleMenuHover = (menuKey: string) => {
+    // いずれかのメニューが開いている場合のみ、ホバーでメニューを切り替える
+    const hasOpenMenus = Object.values(openMenus).some((isOpen) => isOpen);
+    if (hasOpenMenus) {
+      setOpenMenus((prev) => {
+        const newState: { [key: string]: boolean } = {};
+        Object.keys(prev).forEach((key) => {
+          newState[key] = false;
+        });
+        newState[menuKey] = true;
+        return newState;
+      });
+      // サブメニューもリセット
+      setOpenSubmenus({});
+    }
   };
 
   const closeAllMenus = () => {
@@ -795,8 +814,17 @@ function App() {
     if (!hasOpenMenus) return;
 
     const handleClick = (e: MouseEvent) => {
+      const target = e.target as Node;
       const menu = document.querySelector("[data-menu-dropdown]");
-      if (menu && !menu.contains(e.target as Node)) {
+      const menuButton = (target as Element)?.closest(".menu-item button");
+
+      // メニューボタンがクリックされた場合は何もしない（ボタンのonClickに任せる）
+      if (menuButton) {
+        return;
+      }
+
+      // メニュー外がクリックされた場合のみ閉じる
+      if (menu && !menu.contains(target)) {
         closeAllMenus();
       }
     };
@@ -1023,7 +1051,7 @@ function App() {
         `=== StateManager情報 ===\n` +
         `StateManager Debug: ${JSON.stringify(stateManagerDebug, null, 2)}\n\n`
     );
-  }, [getDebugInfo, currentFrame]);
+  }, [getDebugInfo]);
 
   // 計算済み領域の情報を取得（StateManager用）
   const calculatedRegions: Array<{ start: number; end: number }> = [];
@@ -1040,7 +1068,17 @@ function App() {
               <div key={menuKey} className="menu-item relative mr-2">
                 <button
                   className="font-semibold text-gray-700 hover:text-blue-600 focus:outline-none px-2 py-1 rounded"
-                  onClick={() => toggleMenu(menuKey)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleMenu(menuKey);
+                  }}
+                  onMouseDown={(e) => {
+                    // mousedownイベントの伝播を防いで、外部クリック処理との競合を回避
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onMouseEnter={() => handleMenuHover(menuKey)}
                   aria-haspopup="true"
                   aria-expanded={openMenus[menuKey] || false}
                 >
