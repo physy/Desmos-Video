@@ -1428,7 +1428,7 @@ function App() {
                             console.log("Video export settings updated:", settings);
                           }}
                           stateManager={stateManager}
-                          calculator={stateManager?.getComputeCalculator() || null}
+                          calculator={stateManager?.getScreenshotCalculator() || null}
                           formulas={formulas}
                           subtitles={subtitles}
                         />
