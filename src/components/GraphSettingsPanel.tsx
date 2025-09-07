@@ -5,6 +5,8 @@ import { CalculatorOptionsPanel } from "./CalculatorOptionsPanel";
 
 export interface GraphSettingsPanelProps {
   computeCalculator?: Calculator | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  stateManager?: any; // StateManager型を追加
   initialSettings: GraphSettings;
   initialOptions?: GraphingCalculatorOptions & { graphType?: "2d" | "3d" };
   onSave?: (settings: GraphSettings) => void;
@@ -50,6 +52,7 @@ const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
 
 export const GraphSettingsPanel: React.FC<GraphSettingsPanelProps> = ({
   computeCalculator,
+  stateManager,
   initialSettings,
   initialOptions,
   onSave,
@@ -62,18 +65,25 @@ export const GraphSettingsPanel: React.FC<GraphSettingsPanelProps> = ({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [activeTab, setActiveTab] = useState<"settings" | "options">("settings");
 
-  // initialSettingsが変化したらsettingsも更新し、computeCalculatorにも反映
+  // initialSettingsが変化したらsettingsも更新し、スクリーンショット専用calculatorにも反映
   useEffect(() => {
     setSettings(initialSettings ?? DEFAULT_GRAPH_SETTINGS);
     setHasUnsavedChanges(false);
 
-    // computeCalculatorにも反映
+    // デバッグ情報（簡素化）
+    console.log("GraphSettingsPanel: Initializing with stateManager:", !!stateManager);
+
+    // スクリーンショット専用calculatorにも反映
+    const screenshotCalculator = stateManager?.getScreenshotCalculator
+      ? stateManager.getScreenshotCalculator()
+      : null;
+
     if (
-      computeCalculator &&
-      computeCalculator.controller &&
-      computeCalculator.controller.graphSettings
+      screenshotCalculator &&
+      screenshotCalculator.controller &&
+      screenshotCalculator.controller.graphSettings
     ) {
-      const gs = computeCalculator.controller.graphSettings as Partial<GraphSettings>;
+      const gs = screenshotCalculator.controller.graphSettings as Partial<GraphSettings>;
       (Object.keys(initialSettings ?? DEFAULT_GRAPH_SETTINGS) as (keyof GraphSettings)[]).forEach(
         (key) => {
           const value = (initialSettings ?? DEFAULT_GRAPH_SETTINGS)[key];
@@ -86,8 +96,11 @@ export const GraphSettingsPanel: React.FC<GraphSettingsPanelProps> = ({
           }
         }
       );
+      console.log("GraphSettingsPanel - Applied initial settings to screenshot calculator");
+    } else {
+      console.warn("GraphSettingsPanel - Screenshot calculator not available for initial settings");
     }
-  }, [initialSettings, computeCalculator]);
+  }, [initialSettings, stateManager]);
 
   const handleChange = <K extends keyof GraphSettings>(key: K, value: GraphSettings[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -95,12 +108,17 @@ export const GraphSettingsPanel: React.FC<GraphSettingsPanelProps> = ({
   };
 
   const handleSave = () => {
+    // スクリーンショット専用calculatorに設定を適用
+    const screenshotCalculator = stateManager?.getScreenshotCalculator
+      ? stateManager.getScreenshotCalculator()
+      : null;
+
     if (
-      computeCalculator &&
-      computeCalculator.controller &&
-      computeCalculator.controller.graphSettings
+      screenshotCalculator &&
+      screenshotCalculator.controller &&
+      screenshotCalculator.controller.graphSettings
     ) {
-      const gs = computeCalculator.controller.graphSettings as Partial<GraphSettings>;
+      const gs = screenshotCalculator.controller.graphSettings as Partial<GraphSettings>;
       (Object.keys(settings) as (keyof GraphSettings)[]).forEach((key) => {
         // 型ごとに明示的に代入
         if (typeof settings[key] === "number") {
@@ -111,11 +129,13 @@ export const GraphSettingsPanel: React.FC<GraphSettingsPanelProps> = ({
           (gs[key] as string | undefined) = settings[key] as string;
         }
       });
+      console.log("Applied graph settings to screenshot calculator:", settings);
+    } else {
+      console.warn("Screenshot calculator not available for applying graph settings");
     }
     setHasUnsavedChanges(false);
     if (typeof onSave === "function") onSave(settings);
   };
-
   return (
     <div className="h-full flex flex-col">
       {/* タブヘッダー */}

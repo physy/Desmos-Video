@@ -6,6 +6,12 @@ import type { StateEvent } from "./types/timeline";
 import { UnifiedEventEditPanel } from "./components/UnifiedEventEditPanel";
 import { VideoExportPanel } from "./components/VideoExportPanel";
 import { GraphSettingsPanel, type GraphSettings } from "./components/GraphSettingsPanel";
+import {
+  ScreenshotCalculatorManager,
+  cleanupScreenshotCalculators,
+  DEFAULT_GRAPH_SETTINGS as CALC_DEFAULT_GRAPH_SETTINGS,
+} from "./utils/calculatorInitializer";
+import { initializeMathJax } from "./utils/mathJaxInitializer";
 import { ResizablePanel } from "./components/ResizablePanel";
 import { FormulaEditPanel } from "./components/FormulaEditPanel";
 import { CachePanel } from "./components/CachePanel";
@@ -73,25 +79,9 @@ function App() {
 
   // calculatorのuseState宣言を先に（重複宣言があれば削除）
   const [calculator, setCalculator] = useState<Calculator | null>(null);
-  // GraphSettingsの状態
-  const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
-    axisLineWidth: 1.5,
-    axisLineOffset: 0.25,
-    axisOpacity: 0.9,
-    curveOpacity: 0.7,
-    disableFill: false,
-    graphLineWidth: 2.5,
-    highlight: false,
-    labelHangingColor: "rgba(150,150,150,1)",
-    labelSize: 14,
-    lastChangedAxis: "x",
-    majorAxisOpacity: 0.4,
-    minorAxisOpacity: 0.12,
-    pixelsPerLabel: 80,
-    pointLineWidth: 9,
-    squareAxes: false,
-  };
-  const [graphSettings, setGraphSettings] = useState<GraphSettings>(DEFAULT_GRAPH_SETTINGS);
+
+  // GraphSettingsの状態（calculatorInitializerのデフォルト値を使用）
+  const [graphSettings, setGraphSettings] = useState<GraphSettings>(CALC_DEFAULT_GRAPH_SETTINGS);
 
   // CalculatorOptionsの状態（初期値は最小限に）
   const [calculatorOptions, setCalculatorOptions] = useState<
@@ -128,7 +118,7 @@ function App() {
     stateEvents: [],
     durationFrames: 300,
     fps: 30,
-    graphSettings: DEFAULT_GRAPH_SETTINGS,
+    graphSettings: CALC_DEFAULT_GRAPH_SETTINGS,
     videoExportSettings: DEFAULT_VIDEO_SETTINGS,
     calculatorOptions: {
       graphType: "2d",
@@ -237,6 +227,15 @@ function App() {
 
   // 初期化時にローカルストレージからプロジェクトを復元（一度のみ）
   const [hasInitialized, setHasInitialized] = useState(false);
+
+  // MathJax初期化（アプリケーション開始時）
+  useEffect(() => {
+    initializeMathJax(true).then((loaded) => {
+      if (DEBUG_MODE) {
+        console.log(`MathJax initialization ${loaded ? "completed" : "failed"}`);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (!hasInitialized) {
@@ -361,10 +360,6 @@ function App() {
     },
     [subtitles, updateElement]
   );
-
-  // 数式・字幕データの変更をプロジェクトに反映しない（保存時のみ同期）
-
-  // ...existing code...
 
   // videoSettings宣言の後に保存・読み込みコールバックを定義
   // Calculator再作成のハンドラー
@@ -814,6 +809,38 @@ function App() {
   const [activeTab, setActiveTab] = useState<
     "state" | "events" | "timeline" | "export" | "graph" | "formula" | "cache"
   >("events");
+  // スクリーンショット専用calculatorマネージャー
+  const [screenshotCalculatorManager] = useState(() => new ScreenshotCalculatorManager());
+
+  // calculatorOptionsまたはvideoSettingsが変更された場合、スクリーンショット専用calculatorを再作成
+  useEffect(() => {
+    if (calculator && stateManager) {
+      const screenshotCalc = screenshotCalculatorManager.recreate({
+        calculatorOptions,
+        graphSettings,
+        width: Math.round(
+          (videoSettings?.resolution?.width ?? 1920) *
+            (videoSettings?.advanced?.targetPixelRatio ?? 1)
+        ),
+        height: Math.round(
+          (videoSettings?.resolution?.height ?? 1080) *
+            (videoSettings?.advanced?.targetPixelRatio ?? 1)
+        ),
+      });
+
+      if (screenshotCalc) {
+        stateManager.setScreenshotCalculator(screenshotCalc);
+        console.log("Screenshot calculator recreated due to settings change");
+      }
+    }
+  }, [
+    calculatorOptions,
+    graphSettings,
+    videoSettings,
+    calculator,
+    stateManager,
+    screenshotCalculatorManager,
+  ]);
   // 選択状態はuseTimelineで一元管理
   // selectedStateId, setSelectedStateId, selectedEventId, setSelectedEventIdを利用
   // フルHD初期値
@@ -939,9 +966,33 @@ function App() {
     [setProject]
   );
 
-  const handleCalculatorReady = useCallback((calc: Calculator) => {
-    setCalculator(calc);
-  }, []);
+  const handleCalculatorReady = useCallback(
+    (calc: Calculator) => {
+      setCalculator(calc);
+
+      // スクリーンショット専用calculatorを初期化
+      const screenshotCalc = screenshotCalculatorManager.initialize({
+        calculatorOptions,
+        graphSettings,
+        width: Math.round(
+          (videoSettings?.resolution?.width ?? 1920) *
+            (videoSettings?.advanced?.targetPixelRatio ?? 1)
+        ),
+        height: Math.round(
+          (videoSettings?.resolution?.height ?? 1080) *
+            (videoSettings?.advanced?.targetPixelRatio ?? 1)
+        ),
+      });
+
+      if (screenshotCalc && stateManager) {
+        stateManager.setScreenshotCalculator(screenshotCalc);
+        console.log("Screenshot calculator initialized and set in StateManager with GraphSettings");
+      } else {
+        console.warn("Failed to initialize screenshot calculator");
+      }
+    },
+    [stateManager, calculatorOptions, graphSettings, videoSettings, screenshotCalculatorManager]
+  );
 
   // チェックポイントを作成（機能削除のため空実装）
   const handleCreateCheckpoint = useCallback(() => {
@@ -1035,6 +1086,11 @@ function App() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* ヘッダー右側：フレーム情報 */}
+        <div className="flex items-center space-x-2 text-sm">
+          <span className="text-gray-600">Frame: {currentFrame}</span>
         </div>
       </header>
 
@@ -1283,6 +1339,7 @@ function App() {
                       <div className="h-full">
                         <GraphSettingsPanel
                           computeCalculator={stateManager?.getComputeCalculator() || null}
+                          stateManager={stateManager}
                           initialSettings={graphSettings}
                           onSave={(settings) => {
                             setGraphSettings(settings);

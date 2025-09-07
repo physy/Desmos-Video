@@ -190,38 +190,34 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
         }
       }
 
-      // asyncScreenshotで確実に描画後の画像を取得
-      if (typeof computeCalculator.asyncScreenshot === "function") {
-        computeCalculator.asyncScreenshot({ width, height }, (url: string) => {
-          if (!cancelled) {
-            setImageUrl(url);
-            // キャッシュ保存
-            if (typeof stateManager.setScreenshotAtFrame === "function") {
-              stateManager.setScreenshotAtFrame(currentFrame, url);
-            }
+      // スクリーンショット専用calculatorでスクリーンショット取得
+      const screenshotCalculator = stateManager?.getScreenshotCalculator
+        ? stateManager.getScreenshotCalculator()
+        : null;
+
+      if (!screenshotCalculator || typeof screenshotCalculator.asyncScreenshot !== "function") {
+        console.error("Screenshot calculator not available or asyncScreenshot method missing");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const screenshotUrl = await stateManager.getScreenshotWithDedicatedCalculator(
+          await stateManager.getStateAtFrame(currentFrame, false),
+          width,
+          height,
+          pixelRatio
+        );
+        if (!cancelled) {
+          setImageUrl(screenshotUrl);
+          // キャッシュ保存
+          if (typeof stateManager.setScreenshotAtFrame === "function") {
+            stateManager.setScreenshotAtFrame(currentFrame, screenshotUrl);
           }
-          setLoading(false);
-        });
-      } else {
-        // fallback: 通常のscreenshot
-        const result = computeCalculator.screenshot({ width, height });
-        if (typeof result === "string") {
-          if (!cancelled) {
-            setImageUrl(result);
-            if (typeof stateManager.setScreenshotAtFrame === "function") {
-              stateManager.setScreenshotAtFrame(currentFrame, result);
-            }
-          }
-        } else if (typeof result === "undefined") {
-          computeCalculator.screenshot({ width, height }, (url: string) => {
-            if (!cancelled) {
-              setImageUrl(url);
-              if (typeof stateManager.setScreenshotAtFrame === "function") {
-                stateManager.setScreenshotAtFrame(currentFrame, url);
-              }
-            }
-          });
         }
+        setLoading(false);
+      } catch (error) {
+        console.error("Error taking screenshot with dedicated calculator:", error);
         setLoading(false);
       }
     };

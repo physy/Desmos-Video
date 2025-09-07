@@ -609,7 +609,6 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
   onElementSelect,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [mathJaxLoaded, setMathJaxLoaded] = useState(false);
   const [renderedElements, setRenderedElements] = useState<{
     formulas: Array<{ element: FormulaElement; html: string; animationState: AnimationState }>;
     subtitles: Array<{ element: SubtitleElement; animationState: AnimationState }>;
@@ -637,71 +636,10 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
     startScale: number;
   } | null>(null);
 
-  // MathJax初期化（改良版）
-  useEffect(() => {
-    const initMathJax = () => {
-      if (typeof window !== "undefined" && !window.MathJax) {
-        if (debug) {
-          console.log("Initializing MathJax...");
-        }
-
-        // MathJaxの設定（SVG出力最適化）
-        if (!window.MathJax) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (window as any).MathJax = {
-            tex: {
-              inlineMath: [
-                ["$", "$"],
-                ["\\(", "\\)"],
-              ],
-              displayMath: [
-                ["$$", "$$"],
-                ["\\[", "\\]"],
-              ],
-              processEscapes: true,
-              processEnvironments: true,
-            },
-            svg: {
-              fontCache: "none",
-            },
-          };
-        }
-
-        // MathJaxスクリプトを動的に読み込み
-        const mathJaxScript = document.createElement("script");
-        mathJaxScript.src = "https://cdn.jsdelivr.net/npm/mathjax@4/tex-svg.js";
-        mathJaxScript.async = true;
-        mathJaxScript.defer = true;
-        mathJaxScript.onload = () => {
-          if (debug) {
-            console.log("MathJax script loaded");
-          }
-          setTimeout(() => {
-            setMathJaxLoaded(true);
-            if (debug) {
-              console.log("MathJax loaded state set to true");
-            }
-          }, 200); // タイムアウトを少し延長
-        };
-        mathJaxScript.onerror = (error) => {
-          console.error("Failed to load MathJax script:", error);
-        };
-        document.head.appendChild(mathJaxScript);
-      } else if (window.MathJax) {
-        if (debug) {
-          console.log("MathJax already exists, setting loaded state");
-        }
-        setMathJaxLoaded(true);
-      }
-    };
-
-    initMathJax();
-  }, [debug]);
-
   // 数式をHTMLに変換（SVG優先、描画アニメーション対応）
   const renderMathToHTML = useCallback(
     async (latex: string, fontSize: number, forDrawAnimation = false): Promise<string> => {
-      if (!window.MathJax || !mathJaxLoaded) {
+      if (!window.MathJax) {
         if (debug) {
           console.log("MathJax not ready, returning fallback for:", latex);
         }
@@ -831,7 +769,7 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
         return `<span style="color: red;">Error: ${latex}</span>`;
       }
     },
-    [mathJaxLoaded, debug, displayScale]
+    [debug, displayScale]
   );
 
   // 要素の更新処理
@@ -841,7 +779,6 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
         formulasCount: formulas.length,
         subtitlesCount: subtitles.length,
         currentFrame,
-        mathJaxLoaded,
       });
     }
 
@@ -889,7 +826,7 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
     };
 
     updateElements();
-  }, [formulas, subtitles, currentFrame, mathJaxLoaded, renderMathToHTML, debug]);
+  }, [formulas, subtitles, currentFrame, renderMathToHTML, debug]);
 
   // 画面座標から数式の相対座標への変換（数式も0-1の範囲で扱う）
   const screenToFormulaRelative = useCallback(
@@ -1134,7 +1071,6 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
       {debug && (
         <div className="absolute top-2 left-2 bg-black/80 text-white p-2 text-xs z-[100] pointer-events-auto rounded">
           Debug: F:{renderedElements.formulas.length} S:{renderedElements.subtitles.length} Frame:
-          {currentFrame} MJ:{mathJaxLoaded ? "✓" : "✗"}
           <br />
           Export: {exportWidth}x{exportHeight} Scale: {displayScale.toFixed(3)}
           <br />

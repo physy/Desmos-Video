@@ -84,6 +84,10 @@ export class StateManager {
   private evaluationCalculator: Calculator | null = null;
   private isEvaluating: boolean = false;
 
+  // スクリーンショット専用calculator
+  private screenshotCalculator: Calculator | null = null;
+  private isScreenshotting: boolean = false;
+
   // actionアニメーションの結果キャッシュ
   // actionCache[stateHash][expressionId] = [step0State, step1State, step2State, ...]
   private actionCache: Record<string, Record<string, DesmosState[]>> = {};
@@ -113,9 +117,36 @@ export class StateManager {
     debugLog("Evaluation calculator set");
   }
 
+  // スクリーンショット専用calculatorを設定
+  setScreenshotCalculator(calculator: Calculator): void {
+    this.screenshotCalculator = calculator;
+    debugLog("Screenshot calculator set");
+  }
+
+  // スクリーンショット専用calculator取得用getter
+  public getScreenshotCalculator(): Calculator | null {
+    // destroy済みかどうか判定（簡易: getStateが例外を投げる場合）
+    try {
+      if (this.screenshotCalculator) {
+        // getStateを呼んでみてエラーならdestroy済み
+        this.screenshotCalculator.getState();
+        return this.screenshotCalculator;
+      }
+    } catch (e) {
+      // destroy済み
+      return null;
+    }
+    return null;
+  }
+
   // 評価中かどうかを取得
   isEvaluationInProgress(): boolean {
     return this.isEvaluating;
+  }
+
+  // スクリーンショット中かどうかを取得
+  isScreenshottingInProgress(): boolean {
+    return this.isScreenshotting;
   }
 
   // DesmosStateのハッシュを生成（actionキャッシュのキー用）
@@ -208,9 +239,25 @@ export class StateManager {
       width = Math.round(width * targetPixelRatio);
       height = Math.round(height * targetPixelRatio);
       let screenshot: Promise<string> | undefined = undefined;
-      if (this.computeCalculator && typeof this.computeCalculator.asyncScreenshot === "function") {
+
+      // スクリーンショット専用calculatorを使用
+      if (
+        this.screenshotCalculator &&
+        typeof this.screenshotCalculator.asyncScreenshot === "function"
+      ) {
+        screenshot = this.getScreenshotWithDedicatedCalculator(
+          state,
+          width,
+          height,
+          targetPixelRatio
+        );
+      } else if (
+        this.computeCalculator &&
+        typeof this.computeCalculator.asyncScreenshot === "function"
+      ) {
+        debugLog("Warning: Using compute calculator for screenshot");
+        // フォールバック: スクショ専用calculatorが無い場合は計算用calculatorを使用
         screenshot = new Promise<string>((resolve) => {
-          // FIXME: スクショ撮影前に別の場所でstateがセットされるとうまく撮影できない（特にactionが絡む時）
           this.computeCalculator!.setState(state);
           this.computeCalculator!.controller.evaluator.notifyWhenSynced(() => {
             this.computeCalculator!.controller.getGrapher().asyncScreenshot(
@@ -227,6 +274,52 @@ export class StateManager {
       debugLog(`State cached for frame ${frame}`);
     }
     return deepCopy(state);
+  }
+
+  // スクリーンショット専用calculatorでスクリーンショットを取得（パブリック）
+  async getScreenshotWithDedicatedCalculator(
+    state: DesmosState,
+    width: number,
+    height: number,
+    targetPixelRatio: number
+  ): Promise<string> {
+    if (!this.screenshotCalculator) {
+      throw new Error("Screenshot calculator not set");
+    }
+
+    if (this.isScreenshotting) {
+      debugLog("Warning: Another screenshot operation is already in progress, waiting...");
+      // スクリーンショット中の場合は完了まで待機
+      while (this.isScreenshotting) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    }
+
+    try {
+      this.isScreenshotting = true;
+      debugLog(`Started screenshot operation: ${width}x${height}, pixelRatio=${targetPixelRatio}`);
+
+      return new Promise<string>((resolve, reject) => {
+        try {
+          this.screenshotCalculator!.setState(state);
+          this.screenshotCalculator!.controller.evaluator.notifyWhenSynced(() => {
+            this.screenshotCalculator!.controller.getGrapher().asyncScreenshot(
+              { width, height, showLabels: true, targetPixelRatio },
+              (url: string) => {
+                debugLog(`Screenshot completed successfully`);
+                resolve(url);
+              }
+            );
+          });
+        } catch (error) {
+          debugLog(`Error during screenshot operation:`, error);
+          reject(error);
+        }
+      });
+    } finally {
+      this.isScreenshotting = false;
+      debugLog("Screenshot operation completed, flag reset");
+    }
   }
 
   // 安全なbaseFrame（アニメーション途中を避ける）を再帰的に見つける
@@ -952,6 +1045,9 @@ export class StateManager {
     // 評価中フラグをリセット
     this.isEvaluating = false;
 
+    // スクリーンショット中フラグをリセット
+    this.isScreenshotting = false;
+
     // evaluation calculatorも初期状態にリセット
     if (this.evaluationCalculator) {
       try {
@@ -961,7 +1057,16 @@ export class StateManager {
       }
     }
 
-    debugLog("Cache cleared, action cache cleared, and evaluation state reset");
+    // screenshot calculatorも初期状態にリセット
+    if (this.screenshotCalculator) {
+      try {
+        this.screenshotCalculator.setState(getBlankDesmosState());
+      } catch (error) {
+        debugLog("Warning: Failed to reset screenshot calculator:", error);
+      }
+    }
+
+    debugLog("Cache cleared, action cache cleared, evaluation and screenshot state reset");
   }
 
   // 個別フレームのキャッシュを削除
@@ -1033,6 +1138,9 @@ export class StateManager {
       cachedScreenshots: Array.from(this.stateCache.values()).filter((v) => v.screenshot).length,
       computeCalculatorSet: !!this.computeCalculator,
       evaluationCalculatorSet: !!this.evaluationCalculator,
+      screenshotCalculatorSet: !!this.screenshotCalculator,
+      isEvaluating: this.isEvaluating,
+      isScreenshotting: this.isScreenshotting,
       actionCache: actionCacheStats,
     };
   }
