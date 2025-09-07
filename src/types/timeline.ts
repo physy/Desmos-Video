@@ -35,6 +35,11 @@ export interface DesmosExpression {
     step?: string;
     animationPeriod?: number;
   };
+  sliderBounds?: {
+    min?: string;
+    max?: string;
+    step?: string;
+  };
 
   // Other Desmos properties
   playing?: boolean;

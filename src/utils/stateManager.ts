@@ -656,7 +656,10 @@ export class StateManager {
       return previousState;
     }
     try {
-      this.computeCalculator.setExpression(event.properties);
+      this.computeCalculator.setExpression({
+        ...event.properties,
+        sliderBounds: { min: undefined, max: undefined },
+      });
       debugLog(`Created new expression ${event}:`);
     } catch (error) {
       debugLog(`Error creating expression ${event}:`, error);
@@ -715,12 +718,14 @@ export class StateManager {
                 ?.latex?.split("=")[0]
                 .trim() || name
             } = ${startValue}`,
+            sliderBounds: { min: undefined, max: undefined },
           });
         } else {
           // 手動指定の場合
           this.computeCalculator.setExpression({
             id: `__animation_${name}`,
             latex: `${name} = ${startValue}`,
+            sliderBounds: { min: undefined, max: undefined },
           });
         }
         debugLog(`Applied variable animation: ${name} = ${startValue}`);
@@ -735,6 +740,7 @@ export class StateManager {
         this.computeCalculator.setExpression({
           id: targetId,
           [name]: startValue,
+          sliderBounds: { min: undefined, max: undefined },
         });
         debugLog(`Applied property animation: ${targetId}.${name} = ${startValue}`);
       }
