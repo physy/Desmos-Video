@@ -816,6 +816,13 @@ export class StateManager {
         debugLog(`Resuming from cached step ${lastCachedStep}`);
       }
 
+      // 評価の完了を待つ
+      await new Promise<void>((resolve) => {
+        this.evaluationCalculator!.controller.evaluator.notifyWhenSynced(() => {
+          resolve();
+        });
+      });
+
       console.log(
         `before action (step ${lastCachedStep}):`,
         this.evaluationCalculator.getExpressions()
