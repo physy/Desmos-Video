@@ -33,15 +33,44 @@ const debugLog = (...args: unknown[]) => {
   }
 };
 
+// デフォルトのvideoSettings
+const DEFAULT_VIDEO_SETTINGS: VideoExportSettings = {
+  durationFrames: 300,
+  fps: 30,
+  resolution: {
+    width: 1920,
+    height: 1080,
+    preset: "1080p",
+  },
+  quality: {
+    preset: "standard",
+  },
+  format: {
+    container: "mp4",
+    codec: "h264",
+  },
+  advanced: {
+    targetPixelRatio: 1,
+    backgroundColor: "#ffffff",
+    antialias: true,
+    motionBlur: false,
+    frameInterpolation: false,
+  },
+  metadata: {
+    title: "Desmos Animation",
+    description: "Created with Desmos Video Creator",
+  },
+};
+
 export class StateManager {
   // 動画設定（VideoExportPanelから受け取る型に統一）
-  private _videoSettings?: VideoExportSettings;
+  private _videoSettings: VideoExportSettings;
 
   // videoSettingsのgetter/setter
-  public get videoSettings(): VideoExportSettings | undefined {
+  public get videoSettings(): VideoExportSettings {
     return this._videoSettings;
   }
-  public set videoSettings(settings: VideoExportSettings | undefined) {
+  public set videoSettings(settings: VideoExportSettings) {
     this._videoSettings = settings;
     this.clearCache(); // 設定変更時はキャッシュクリア
     debugLog("Video settings updated:", settings);
@@ -98,10 +127,12 @@ export class StateManager {
   constructor(timeline: UnifiedEvent[] = [], stateEvents: StateEvent[] = []) {
     this.timeline = [...timeline].sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0));
     this.stateEvents = [...stateEvents].sort((a, b) => (a.frame ?? 0) - (b.frame ?? 0));
+    this._videoSettings = DEFAULT_VIDEO_SETTINGS; // デフォルト値で初期化
 
     debugLog("StateManagerV2 initialized with:", {
       timelineEvents: this.timeline.length,
       stateEvents: this.stateEvents.length,
+      defaultVideoSettings: this._videoSettings,
     });
   }
 
@@ -226,15 +257,13 @@ export class StateManager {
       let height = 1080;
       let targetPixelRatio = 1;
       let backgroundColor = "#fff";
-      if (this._videoSettings) {
-        if (this._videoSettings.resolution) {
-          width = this._videoSettings.resolution.width ?? width;
-          height = this._videoSettings.resolution.height ?? height;
-        }
-        if (this._videoSettings.advanced) {
-          targetPixelRatio = this._videoSettings.advanced.targetPixelRatio ?? targetPixelRatio;
-          backgroundColor = this._videoSettings.advanced.backgroundColor ?? backgroundColor;
-        }
+      if (this._videoSettings.resolution) {
+        width = this._videoSettings.resolution.width ?? width;
+        height = this._videoSettings.resolution.height ?? height;
+      }
+      if (this._videoSettings.advanced) {
+        targetPixelRatio = this._videoSettings.advanced.targetPixelRatio ?? targetPixelRatio;
+        backgroundColor = this._videoSettings.advanced.backgroundColor ?? backgroundColor;
       }
       width = Math.round(width * targetPixelRatio);
       height = Math.round(height * targetPixelRatio);
@@ -476,14 +505,12 @@ export class StateManager {
     let width = 1920;
     let height = 1080;
     let pixelRatio = 1;
-    if (this._videoSettings) {
-      if (this._videoSettings.resolution) {
-        width = this._videoSettings.resolution.width ?? width;
-        height = this._videoSettings.resolution.height ?? height;
-      }
-      if (this._videoSettings.advanced) {
-        pixelRatio = this._videoSettings.advanced.targetPixelRatio ?? pixelRatio;
-      }
+    if (this._videoSettings.resolution) {
+      width = this._videoSettings.resolution.width ?? width;
+      height = this._videoSettings.resolution.height ?? height;
+    }
+    if (this._videoSettings.advanced) {
+      pixelRatio = this._videoSettings.advanced.targetPixelRatio ?? pixelRatio;
     }
     width = Math.round(width * pixelRatio);
     height = Math.round(height * pixelRatio);
@@ -1147,6 +1174,48 @@ export class StateManager {
   // 指定時刻のスクリーンショットを取得
   async getScreenshotAtFrame(frame: number): Promise<string | undefined> {
     return await this.stateCache.get(frame)?.screenshot;
+  }
+
+  // 全フレームのキャッシュを作成（stateとscreenshot両方）
+  async createAllFrameCache(
+    onProgress?: (currentFrame: number, totalFrames: number) => void
+  ): Promise<void> {
+    const totalFrames = this._videoSettings.durationFrames;
+    debugLog(`Creating cache for all ${totalFrames} frames`);
+
+    // 既存キャッシュをクリア
+    this.clearCache();
+
+    // 各フレームのstateとscreenshotを順次作成
+    for (let frame = 0; frame < totalFrames; frame++) {
+      try {
+        // プログレス通知
+        if (onProgress) {
+          onProgress(frame, totalFrames);
+        }
+
+        // stateとscreenshotを取得（内部でキャッシュされる）
+        debugLog(`Caching frame ${frame}/${totalFrames}`);
+        await this.getStateAtFrame(frame, true); // screenshot=trueでスクリーンショットも取得
+
+        // スクリーンショットのPromiseが解決されるまで待機
+        const cache = this.stateCache.get(frame);
+        if (cache?.screenshot) {
+          await cache.screenshot;
+          debugLog(`Screenshot cached for frame ${frame}`);
+        }
+      } catch (error) {
+        console.error(`Failed to cache frame ${frame}:`, error);
+        // エラーが発生しても続行
+      }
+    }
+
+    debugLog("All frame cache creation completed");
+
+    // 最終プログレス通知
+    if (onProgress) {
+      onProgress(totalFrames, totalFrames);
+    }
   }
 }
 

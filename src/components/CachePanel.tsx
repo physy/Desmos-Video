@@ -30,6 +30,13 @@ export const CachePanel: React.FC<CachePanelProps> = ({ stateManager }) => {
   const [previewData, setPreviewData] = useState<CachePreviewData | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
+  // 全フレームキャッシュ作成状態
+  const [isCreatingAllCache, setIsCreatingAllCache] = useState(false);
+  const [cacheCreationProgress, setCacheCreationProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
+
   // キャッシュ情報を更新
   const updateCacheInfo = useCallback(async () => {
     if (!stateManager) {
@@ -167,6 +174,35 @@ export const CachePanel: React.FC<CachePanelProps> = ({ stateManager }) => {
     }
   };
 
+  // 全フレームキャッシュ作成
+  const handleCreateAllFrameCache = async () => {
+    if (!stateManager) return;
+
+    if (
+      !confirm("全フレームのキャッシュを作成します。既存のキャッシュは削除されます。続行しますか？")
+    ) {
+      return;
+    }
+
+    setIsCreatingAllCache(true);
+    setCacheCreationProgress({ current: 0, total: 0 });
+
+    try {
+      await stateManager.createAllFrameCache((current, total) => {
+        setCacheCreationProgress({ current, total });
+      });
+
+      alert("全フレームのキャッシュ作成が完了しました。");
+      await updateCacheInfo();
+    } catch (error) {
+      console.error("Failed to create all frame cache:", error);
+      alert(`キャッシュ作成に失敗しました: ${error}`);
+    } finally {
+      setIsCreatingAllCache(false);
+      setCacheCreationProgress(null);
+    }
+  };
+
   const totalCacheSize = cacheInfo.length;
   const screenshotCacheSize = cacheInfo.filter((info) => info.hasScreenshot).length;
 
@@ -214,7 +250,35 @@ export const CachePanel: React.FC<CachePanelProps> = ({ stateManager }) => {
           >
             選択削除
           </button>
+          <button
+            onClick={handleCreateAllFrameCache}
+            className="px-3 py-2 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+            disabled={isCreatingAllCache || !stateManager}
+          >
+            {isCreatingAllCache ? "作成中..." : "全フレーム作成"}
+          </button>
         </div>
+
+        {/* 全フレームキャッシュ作成プログレス */}
+        {cacheCreationProgress && (
+          <div className="p-3 bg-blue-50 rounded border border-blue-200">
+            <div className="text-sm text-blue-800 mb-2">
+              キャッシュ作成中: {cacheCreationProgress.current} / {cacheCreationProgress.total}{" "}
+              フレーム
+            </div>
+            <div className="w-full bg-blue-200 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{
+                  width:
+                    cacheCreationProgress.total > 0
+                      ? `${(cacheCreationProgress.current / cacheCreationProgress.total) * 100}%`
+                      : "0%",
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* 範囲選択 */}
         <div className="flex items-center space-x-2 text-sm">
