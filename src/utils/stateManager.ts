@@ -22,6 +22,7 @@ export function getBlankDesmosState(): DesmosState {
 import type { Calculator, DesmosState } from "../types/desmos";
 import type { StateEvent, UnifiedEvent, VideoExportSettings } from "../types/timeline";
 import { deepCopy } from "./deepCopy";
+import { DEFAULT_VIDEO_SETTINGS } from "./videoSettingsDefaults";
 
 // デバッグモードのフラグ
 const DEBUG_MODE = true;
@@ -31,35 +32,6 @@ const debugLog = (...args: unknown[]) => {
   if (DEBUG_MODE) {
     console.log("[StateManager]", ...args);
   }
-};
-
-// デフォルトのvideoSettings
-const DEFAULT_VIDEO_SETTINGS: VideoExportSettings = {
-  durationFrames: 300,
-  fps: 30,
-  resolution: {
-    width: 1920,
-    height: 1080,
-    preset: "1080p",
-  },
-  quality: {
-    preset: "standard",
-  },
-  format: {
-    container: "mp4",
-    codec: "h264",
-  },
-  advanced: {
-    targetPixelRatio: 1,
-    backgroundColor: "#ffffff",
-    antialias: true,
-    motionBlur: false,
-    frameInterpolation: false,
-  },
-  metadata: {
-    title: "Desmos Animation",
-    description: "Created with Desmos Video Creator",
-  },
 };
 
 export class StateManager {

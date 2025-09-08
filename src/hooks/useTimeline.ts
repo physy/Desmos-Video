@@ -98,8 +98,6 @@ export const useTimeline = (
   const [project, setProject] = useState<AnimationProject>({
     timeline: [],
     stateEvents: [],
-    durationFrames: 300,
-    fps: 30,
   });
 
   const [currentFrame, setCurrentFrame] = useState(0);
@@ -200,7 +198,8 @@ export const useTimeline = (
     setIsPlaying(true);
     isPlayingRef.current = true;
     const startFrame = currentFrame;
-    const fps = project.fps || 30;
+    const fps = project.videoExportSettings?.fps || 30;
+    const durationFrames = project.videoExportSettings?.durationFrames || 300;
     const startTime = Date.now();
 
     // 再生ループを非同期で制御
@@ -212,14 +211,14 @@ export const useTimeline = (
       const newFrame = startFrame + Math.round(elapsed * fps);
       const currentProject = projectRef.current;
 
-      if (newFrame >= currentProject.durationFrames) {
+      if (newFrame >= durationFrames) {
         try {
-          await stateManager.getStateAtFrame(currentProject.durationFrames);
-          lastAppliedFrameRef.current = currentProject.durationFrames;
+          await stateManager.getStateAtFrame(durationFrames);
+          lastAppliedFrameRef.current = durationFrames;
         } catch (error) {
           console.error("[useTimeline] Failed to apply final state:", error);
         }
-        setCurrentFrame(currentProject.durationFrames);
+        setCurrentFrame(durationFrames);
         setIsPlaying(false);
         isPlayingRef.current = false;
         return;
@@ -249,7 +248,13 @@ export const useTimeline = (
       animate();
     };
     animate();
-  }, [calculator, currentFrame, stateManager, project.fps]);
+  }, [
+    calculator,
+    currentFrame,
+    stateManager,
+    project.videoExportSettings?.durationFrames,
+    project.videoExportSettings?.fps,
+  ]);
 
   // アニメーションを停止
   const pause = useCallback(() => {

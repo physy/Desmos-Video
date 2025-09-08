@@ -5,12 +5,14 @@ import GraphPreview from "./components/GraphPreview";
 import type { StateEvent } from "./types/timeline";
 import { UnifiedEventEditPanel } from "./components/UnifiedEventEditPanel";
 import { VideoExportPanel } from "./components/VideoExportPanel";
-import { GraphSettingsPanel, type GraphSettings } from "./components/GraphSettingsPanel";
+import { GraphSettingsPanel } from "./components/GraphSettingsPanel";
 import {
   ScreenshotCalculatorManager,
   cleanupScreenshotCalculators,
   DEFAULT_GRAPH_SETTINGS as CALC_DEFAULT_GRAPH_SETTINGS,
+  type GraphSettings,
 } from "./utils/calculatorInitializer";
+import { DEFAULT_VIDEO_SETTINGS } from "./utils/videoSettingsDefaults";
 import { initializeMathJax } from "./utils/mathJaxInitializer";
 import { ResizablePanel } from "./components/ResizablePanel";
 import { FormulaEditPanel } from "./components/FormulaEditPanel";
@@ -110,33 +112,12 @@ function App() {
   });
 
   // VideoExportSettingsの状態（宣言を前方へ移動）
-  const DEFAULT_VIDEO_SETTINGS: VideoExportSettings = {
-    durationFrames: 300,
-    fps: 30,
-    resolution: {
-      width: 1920,
-      height: 1080,
-      preset: "1080p",
-    },
-    quality: { bitrate: 5000, preset: "standard" },
-    format: { container: "mp4", codec: "h264" },
-    advanced: {
-      targetPixelRatio: 1,
-      backgroundColor: "#ffffff",
-      antialias: true,
-      motionBlur: false,
-      frameInterpolation: false,
-    },
-    metadata: { title: "Desmos Animation", description: "", author: "", tags: [] },
-  };
   const [videoSettings, setVideoSettings] = useState<VideoExportSettings>(DEFAULT_VIDEO_SETTINGS);
 
   // 初期プロジェクト定義
   const INITIAL_PROJECT: AnimationProject = {
     timeline: [],
     stateEvents: [],
-    durationFrames: 300,
-    fps: 30,
     graphSettings: CALC_DEFAULT_GRAPH_SETTINGS,
     videoExportSettings: DEFAULT_VIDEO_SETTINGS,
     calculatorOptions: {
@@ -201,11 +182,10 @@ function App() {
         calculatorOptions: hCalculatorOptions,
         formulas: hFormulas,
         subtitles: hSubtitles,
-        ...timelineProject
       } = newProject;
 
       // useTimelineのプロジェクトを更新
-      setProject(timelineProject);
+      setProject(newProject);
 
       // その他の状態も更新
       if (hGraphSettings) {
@@ -261,17 +241,15 @@ function App() {
       const savedProject = loadFromStorage();
       if (savedProject) {
         console.log("初期化時にプロジェクトを復元:", savedProject);
-        // 各状態を直接設定（履歴に追加しない）
         const {
           graphSettings: hGraphSettings,
           videoExportSettings: hVideoSettings,
           calculatorOptions: hCalculatorOptions,
           formulas: hFormulas,
           subtitles: hSubtitles,
-          ...timelineProject
         } = savedProject;
 
-        setProject(timelineProject);
+        setProject(savedProject);
 
         if (hGraphSettings) {
           setGraphSettings(hGraphSettings);
@@ -469,44 +447,8 @@ function App() {
     const initialProject: AnimationProject = {
       timeline: [],
       stateEvents: [],
-      durationFrames: 300, // 10秒（30fps）
-      fps: 30,
-      graphSettings: {
-        axisLineWidth: 1.5,
-        axisLineOffset: 0.25,
-        axisOpacity: 0.9,
-        curveOpacity: 0.7,
-        disableFill: false,
-        graphLineWidth: 2.5,
-        highlight: false,
-        labelHangingColor: "rgba(150,150,150,1)",
-        labelSize: 14,
-        lastChangedAxis: "x",
-        majorAxisOpacity: 0.4,
-        minorAxisOpacity: 0.12,
-        pixelsPerLabel: 80,
-        pointLineWidth: 9,
-        squareAxes: false,
-      },
-      videoExportSettings: {
-        durationFrames: 300,
-        fps: 30,
-        resolution: {
-          width: 1920,
-          height: 1080,
-          preset: "1080p",
-        },
-        quality: { bitrate: 5000, preset: "standard" },
-        format: { container: "mp4", codec: "h264" },
-        advanced: {
-          targetPixelRatio: 1,
-          backgroundColor: "#ffffff",
-          antialias: true,
-          motionBlur: false,
-          frameInterpolation: false,
-        },
-        metadata: { title: "Desmos Animation", description: "", author: "", tags: [] },
-      },
+      graphSettings: CALC_DEFAULT_GRAPH_SETTINGS,
+      videoExportSettings: DEFAULT_VIDEO_SETTINGS,
       calculatorOptions: {
         keypad: false,
         expressions: true,
@@ -952,7 +894,7 @@ function App() {
       // 動画長（durationFrames）が変更されたらタイムライン長も更新
       setProject((prev) => ({
         ...prev,
-        durationFrames: settings.durationFrames,
+        videoExportSettings: settings,
       }));
     },
     [adjustGraphAspectRatio, stateManager, setProject, setVideoSettings]
@@ -1422,7 +1364,7 @@ function App() {
                         <VideoExportPanel
                           videoSettings={videoSettings}
                           onVideoSettingsChange={handleVideoSettingsChange}
-                          durationFrames={project.durationFrames}
+                          durationFrames={project.videoExportSettings?.durationFrames || 300}
                           fps={fps}
                           onSettingsChange={(settings) => {
                             console.log("Video export settings updated:", settings);
@@ -1445,7 +1387,9 @@ function App() {
                               プロジェクト情報
                             </h3>
                             <div className="text-xs text-gray-500 space-y-1">
-                              <div>総フレーム数: {project.durationFrames}フレーム</div>
+                              <div>
+                                総フレーム数: {project.videoExportSettings?.durationFrames}フレーム
+                              </div>
                               <div>Timeline Events: {project.timeline.length}</div>
                               <div className="text-green-600">
                                 State Events: {project.stateEvents.length}
@@ -1482,7 +1426,7 @@ function App() {
             <div className="flex-1 min-h-0" style={{ overflow: "visible" }}>
               <TimelineControls
                 currentFrame={currentFrame}
-                duration={project.durationFrames}
+                duration={project.videoExportSettings?.durationFrames || 300}
                 fps={fps}
                 isPlaying={isPlaying}
                 timeline={project.timeline}

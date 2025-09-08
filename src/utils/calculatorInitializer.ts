@@ -29,7 +29,7 @@ export const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
   graphLineWidth: 2.5,
   highlight: false,
   labelHangingColor: "rgba(150,150,150,1)",
-  labelSize: 14,
+  labelSize: 30,
   lastChangedAxis: "x",
   majorAxisOpacity: 0.4,
   minorAxisOpacity: 0.12,

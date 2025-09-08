@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import type { Calculator } from "../types/desmos";
 import type { GraphingCalculatorOptions } from "../types/desmos";
 import { CalculatorOptionsPanel } from "./CalculatorOptionsPanel";
+import { DEFAULT_GRAPH_SETTINGS, type GraphSettings } from "../utils/calculatorInitializer";
 
 export interface GraphSettingsPanelProps {
   computeCalculator?: Calculator | null;
@@ -13,42 +14,6 @@ export interface GraphSettingsPanelProps {
   onOptionsSave?: (options: GraphingCalculatorOptions & { graphType?: "2d" | "3d" }) => void;
   onGraphTypeChange?: (graphType: "2d" | "3d") => void;
 }
-
-export interface GraphSettings {
-  axisLineWidth: number;
-  axisLineOffset: number;
-  axisOpacity: number;
-  curveOpacity: number;
-  disableFill: boolean;
-  graphLineWidth: number;
-  highlight: boolean;
-  labelHangingColor: string;
-  labelSize: number;
-  lastChangedAxis: string;
-  majorAxisOpacity: number;
-  minorAxisOpacity: number;
-  pixelsPerLabel: number;
-  pointLineWidth: number;
-  squareAxes: boolean;
-}
-
-const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
-  axisLineWidth: 1.5,
-  axisLineOffset: 0.25,
-  axisOpacity: 0.9,
-  curveOpacity: 0.7,
-  disableFill: false,
-  graphLineWidth: 2.5,
-  highlight: false,
-  labelHangingColor: "rgba(150,150,150,1)",
-  labelSize: 14,
-  lastChangedAxis: "x",
-  majorAxisOpacity: 0.4,
-  minorAxisOpacity: 0.12,
-  pixelsPerLabel: 80,
-  pointLineWidth: 9,
-  squareAxes: false,
-};
 
 export const GraphSettingsPanel: React.FC<GraphSettingsPanelProps> = ({
   computeCalculator,

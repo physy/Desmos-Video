@@ -5,6 +5,7 @@ import type { StateManager } from "../utils/stateManager";
 import type { FormulaElement, SubtitleElement } from "../types/formula";
 import { createFFmpeg } from "@ffmpeg/ffmpeg";
 import { renderOverlayToCanvas } from "./OverlayRenderer";
+import { DEFAULT_VIDEO_SETTINGS } from "../utils/videoSettingsDefaults";
 
 export interface VideoExportPanelProps {
   videoSettings?: VideoExportSettings | null;
@@ -52,59 +53,30 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
   // frame→秒変換関数（useCallbackで安定化）
   const frameToSeconds = useCallback((frame: number) => (fps ? frame / fps : frame / 30), [fps]);
   const [settings, setSettings] = useState<VideoExportSettings>(() => {
-    // 外部から渡された設定があればそれを使用、なければフルHD(1080p)で初期化
-    const defaultSettings: VideoExportSettings = {
+    // 外部から渡された設定があればそれを使用、なければデフォルト設定を使用
+    return {
+      ...DEFAULT_VIDEO_SETTINGS,
       durationFrames: durationFrames,
       fps: fps || 30,
-      resolution: {
-        width: 1920,
-        height: 1080,
-        preset: "1080p",
-      },
-      quality: {
-        bitrate: 5000,
-        preset: "standard",
-      },
-      format: {
-        container: "mp4",
-        codec: "h264",
-      },
-      advanced: {
-        targetPixelRatio: 0.5,
-        backgroundColor: "#ffffff",
-        antialias: true,
-        motionBlur: false,
-        frameInterpolation: false,
-      },
-      metadata: {
-        title: "Desmos Animation",
-        description: "",
-        author: "",
-        tags: [],
-      },
-    };
-    // videoSettingsがあればマージ（不足項目はデフォルトで補完）
-    return {
-      ...defaultSettings,
       ...videoSettings,
       resolution: {
-        ...defaultSettings.resolution,
+        ...DEFAULT_VIDEO_SETTINGS.resolution,
         ...(videoSettings?.resolution || {}),
       },
       quality: {
-        ...defaultSettings.quality,
+        ...DEFAULT_VIDEO_SETTINGS.quality,
         ...(videoSettings?.quality || {}),
       },
       format: {
-        ...defaultSettings.format,
+        ...DEFAULT_VIDEO_SETTINGS.format,
         ...(videoSettings?.format || {}),
       },
       advanced: {
-        ...defaultSettings.advanced,
+        ...DEFAULT_VIDEO_SETTINGS.advanced,
         ...(videoSettings?.advanced || {}),
       },
       metadata: {
-        ...defaultSettings.metadata,
+        ...DEFAULT_VIDEO_SETTINGS.metadata,
         ...(videoSettings?.metadata || {}),
       },
     };
@@ -161,54 +133,37 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
   const handleSettingsChange = useCallback(
     (updates: Partial<VideoExportSettings>) => {
       // fpsやdurationFramesの依存関係を考慮
-      const defaultAdvanced = {
-        targetPixelRatio: 0.5,
-        backgroundColor: "#ffffff",
-        antialias: true,
-        motionBlur: false,
-        frameInterpolation: false,
-      };
-      const defaultResolution = {
-        width: 1920,
-        height: 1080,
-        preset: "1080p",
-      };
-      const defaultQuality = {
-        bitrate: 5000,
-        preset: "standard",
-      };
-      const defaultFormat = {
-        container: "mp4",
-        codec: "h264",
-      };
-      const defaultMetadata = {
-        title: "Desmos Animation",
-        description: "",
-        author: "",
-        tags: [],
-      };
-
       setSettings((prevSettings) => {
         const newSettings = {
           ...prevSettings,
           ...updates,
           advanced: Object.assign(
             {},
-            defaultAdvanced,
+            DEFAULT_VIDEO_SETTINGS.advanced,
             prevSettings.advanced,
             updates.advanced || {}
           ),
           resolution: Object.assign(
             {},
-            defaultResolution,
+            DEFAULT_VIDEO_SETTINGS.resolution,
             prevSettings.resolution,
             updates.resolution || {}
           ),
-          quality: Object.assign({}, defaultQuality, prevSettings.quality, updates.quality || {}),
-          format: Object.assign({}, defaultFormat, prevSettings.format, updates.format || {}),
+          quality: Object.assign(
+            {},
+            DEFAULT_VIDEO_SETTINGS.quality,
+            prevSettings.quality,
+            updates.quality || {}
+          ),
+          format: Object.assign(
+            {},
+            DEFAULT_VIDEO_SETTINGS.format,
+            prevSettings.format,
+            updates.format || {}
+          ),
           metadata: Object.assign(
             {},
-            defaultMetadata,
+            DEFAULT_VIDEO_SETTINGS.metadata,
             prevSettings.metadata,
             updates.metadata || {}
           ),

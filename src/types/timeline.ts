@@ -194,14 +194,12 @@ export interface AnimationEvent {
   id?: string;
 }
 
-import type { GraphSettings } from "../components/GraphSettingsPanel";
+import type { GraphSettings } from "../utils/calculatorInitializer";
 import type { GraphingCalculatorOptions } from "./desmos";
 
 export interface AnimationProject {
   timeline: TimelineEvent[];
   stateEvents: StateEvent[];
-  durationFrames: number;
-  fps?: number;
   graphSettings?: GraphSettings;
   videoExportSettings?: VideoExportSettings;
   calculatorOptions?: GraphingCalculatorOptions & { graphType?: "2d" | "3d" };
