@@ -20,6 +20,8 @@ export interface FormulaElement {
     duration: number; // アニメーション時間（フレーム数）
     delay?: number; // アニメーション開始遅延（フレーム数）
     easing?: "linear" | "ease-in" | "ease-out" | "ease-in-out";
+    // スケールアニメーション用の原点設定
+    scaleOrigin?: "center" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
     // drawアニメーション用のオプション
     drawOptions?: {
       sequentialChars: boolean; // true: 文字を順番に表示, false: 全文字同時
@@ -32,6 +34,8 @@ export interface FormulaElement {
     type: "fade" | "slide" | "scale" | "none";
     duration: number; // 消失アニメーション時間（フレーム数）
     easing?: "linear" | "ease-in" | "ease-out" | "ease-in-out";
+    // スケールアニメーション用の原点設定
+    scaleOrigin?: "center" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
   };
   visible: boolean;
   frame: number; // このフォーミュラが開始するフレーム
@@ -55,15 +59,19 @@ export interface SubtitleElement {
     textAlign?: "left" | "center" | "right";
   };
   animation?: {
-    type: "typewriter" | "fade" | "slide" | "none";
+    type: "typewriter" | "fade" | "slide" | "scale" | "none";
     duration: number; // アニメーション時間（フレーム数）
     delay?: number; // アニメーション開始遅延（フレーム数）
     easing?: "linear" | "ease-in" | "ease-out" | "ease-in-out";
+    // スケールアニメーション用の原点設定
+    scaleOrigin?: "center" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
   };
   exitAnimation?: {
     type: "fade" | "slide" | "scale" | "none";
     duration: number; // 消失アニメーション時間（フレーム数）
     easing?: "linear" | "ease-in" | "ease-out" | "ease-in-out";
+    // スケールアニメーション用の原点設定
+    scaleOrigin?: "center" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
   };
   visible: boolean;
   frame: number; // この字幕が開始するフレーム

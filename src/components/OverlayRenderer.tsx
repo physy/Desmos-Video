@@ -143,6 +143,50 @@ const applyEasing = (progress: number, easing?: string): number => {
   }
 };
 
+// スケール原点をCSS transform-originに変換
+const getTransformOrigin = (
+  scaleOrigin?: "center" | "top-left" | "top-right" | "bottom-left" | "bottom-right"
+): string => {
+  switch (scaleOrigin) {
+    case "top-left":
+      return "top left";
+    case "top-right":
+      return "top right";
+    case "bottom-left":
+      return "bottom left";
+    case "bottom-right":
+      return "bottom right";
+    case "center":
+    default:
+      return "center center";
+  }
+};
+
+// Canvas描画時のスケール原点を座標オフセットで調整する関数
+const getCanvasScaleOffset = (
+  scaleOrigin: "center" | "top-left" | "top-right" | "bottom-left" | "bottom-right" = "center",
+  width: number,
+  height: number,
+  scale: number
+): { offsetX: number; offsetY: number } => {
+  // スケール変換による位置調整の計算
+  const scaleDelta = 1 - scale;
+
+  switch (scaleOrigin) {
+    case "top-left":
+      return { offsetX: 0, offsetY: 0 };
+    case "top-right":
+      return { offsetX: width * scaleDelta, offsetY: 0 };
+    case "bottom-left":
+      return { offsetX: 0, offsetY: height * scaleDelta };
+    case "bottom-right":
+      return { offsetX: width * scaleDelta, offsetY: height * scaleDelta };
+    case "center":
+    default:
+      return { offsetX: (width * scaleDelta) / 2, offsetY: (height * scaleDelta) / 2 };
+  }
+};
+
 // タイプライターアニメーション用のテキスト分割
 const getTypewriterText = (text: string, progress: number): string => {
   const targetLength = Math.floor(text.length * progress);
@@ -1108,7 +1152,8 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
         // アニメーション効果の計算
         let opacity = element.style.opacity * animationState.progress;
         let translateX = 0;
-        let fontSize = element.style.fontSize; // フォントサイズベースに変更
+        let scale = 1; // CSS transformで適用するスケール
+        let scaleOrigin = "center"; // デフォルトのスケール原点
         let transform = "";
 
         // 出現アニメーション
@@ -1118,8 +1163,8 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
               element.style.opacity * (animationState.enterProgress || animationState.progress);
             break;
           case "scale":
-            fontSize =
-              element.style.fontSize * (animationState.enterProgress || animationState.progress);
+            scale = animationState.enterProgress || animationState.progress;
+            scaleOrigin = element.animation?.scaleOrigin || "center";
             break;
           case "slide":
             translateX = (1 - (animationState.enterProgress || animationState.progress)) * -50;
@@ -1142,7 +1187,8 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
               opacity = opacity * (1 - animationState.exitProgress);
               break;
             case "scale":
-              fontSize = fontSize * (1 - animationState.exitProgress);
+              scale = scale * (1 - animationState.exitProgress);
+              scaleOrigin = element.exitAnimation?.scaleOrigin || "center";
               break;
             case "slide":
               translateX = translateX + animationState.exitProgress * 50;
@@ -1150,7 +1196,7 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
           }
         }
 
-        transform = `translate(${screenX + translateX}px, ${screenY}px) ${
+        transform = `translate(${screenX + translateX}px, ${screenY}px) scale(${scale}) ${
           element.style.rotation ? `rotate(${element.style.rotation}deg)` : ""
         }`;
 
@@ -1164,9 +1210,11 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
             }`}
             style={{
               transform,
-              transformOrigin: "center center",
+              transformOrigin: getTransformOrigin(
+                scaleOrigin as "center" | "top-left" | "top-right" | "bottom-left" | "bottom-right"
+              ),
               opacity,
-              fontSize: `${fontSize * displayScale}px`, // 計算されたfontSizeを使用
+              fontSize: `${element.style.fontSize * displayScale}px`, // 元のフォントサイズを使用
               color: element.style.color,
               backgroundColor: debug
                 ? element.style.backgroundColor || "rgba(255, 255, 0, 0.3)"
@@ -1278,6 +1326,8 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
         let displayText = element.text;
         let opacity = element.style.opacity;
         let translateX = 0;
+        let scale = 1; // CSS transformで適用するスケール
+        let scaleOrigin = "center"; // デフォルトのスケール原点
 
         // 出現アニメーション
         switch (element.animation?.type) {
@@ -1295,6 +1345,10 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
           case "slide":
             translateX = (1 - (animationState.enterProgress || animationState.progress)) * -100;
             break;
+          case "scale":
+            scale = animationState.enterProgress || animationState.progress;
+            scaleOrigin = element.animation?.scaleOrigin || "center";
+            break;
         }
 
         // 消去アニメーション
@@ -1311,10 +1365,14 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
             case "slide":
               translateX = translateX + animationState.exitProgress * 100;
               break;
+            case "scale":
+              scale = scale * (1 - animationState.exitProgress);
+              scaleOrigin = element.exitAnimation?.scaleOrigin || "center";
+              break;
           }
         }
 
-        const transform = `translate(${screenX + translateX}px, ${screenY}px)`;
+        const transform = `translate(${screenX + translateX}px, ${screenY}px) scale(${scale})`;
         const isSelected = selectedElementId === element.id && selectedElementType === "subtitle";
 
         return (
@@ -1325,7 +1383,9 @@ export const OverlayRenderer: React.FC<OverlayRendererProps> = ({
             }`}
             style={{
               transform,
-              transformOrigin: "center center",
+              transformOrigin: getTransformOrigin(
+                scaleOrigin as "center" | "top-left" | "top-right" | "bottom-left" | "bottom-right"
+              ),
               opacity,
               fontSize: `${element.style.fontSize * displayScale}px`,
               color: element.style.color,
@@ -1555,11 +1615,63 @@ export const renderOverlayToCanvas = async (
     const screenY = formula.position.y * exportHeight;
     console.log(`🧮 Screen position: ${screenX}, ${screenY}`);
 
+    // アニメーション効果の計算（エクスポート時もプレビューと統一）
+    let opacity = formula.style.opacity * animationState.progress;
+    let translateX = 0;
+    let scale = 1; // スケール値
+    let scaleOrigin = "center"; // スケール原点
+
+    // 出現アニメーション
+    switch (formula.animation?.type) {
+      case "fade":
+        opacity = formula.style.opacity * (animationState.enterProgress || animationState.progress);
+        break;
+      case "scale": {
+        scale = animationState.enterProgress || animationState.progress;
+        scaleOrigin = formula.animation?.scaleOrigin || "center";
+        break;
+      }
+      case "slide":
+        translateX = (1 - (animationState.enterProgress || animationState.progress)) * -50;
+        break;
+      case "draw":
+        // 描画アニメーションは後でHTMLコンテンツに適用
+        opacity = formula.style.opacity;
+        break;
+    }
+
+    // 消去アニメーション
+    if (
+      formula.exitAnimation &&
+      formula.exitAnimation.type !== "none" &&
+      animationState.exitProgress &&
+      animationState.exitProgress > 0
+    ) {
+      switch (formula.exitAnimation.type) {
+        case "fade":
+          opacity = opacity * (1 - animationState.exitProgress);
+          break;
+        case "scale": {
+          const exitScaleProgress = 1 - animationState.exitProgress;
+          scale = scale * exitScaleProgress;
+          scaleOrigin = formula.exitAnimation?.scaleOrigin || "center";
+          break;
+        }
+        case "slide":
+          translateX = translateX + animationState.exitProgress * 50;
+          break;
+      }
+    }
+
+    console.log(
+      `🎨 Final animation values: opacity=${opacity}, translateX=${translateX}, scale=${scale}, scaleOrigin=${scaleOrigin}`
+    );
+
     try {
       // 数式をHTMLに変換
       const html = await renderMathToHTML(
         formula.content,
-        formula.style.fontSize,
+        formula.style.fontSize, // 元のフォントサイズを使用
         formula.style.color
       );
       console.log(`🧮 Rendered HTML:`, html);
@@ -1569,7 +1681,7 @@ export const renderOverlayToCanvas = async (
       tempDiv.innerHTML = html;
       tempDiv.style.position = "absolute";
       tempDiv.style.left = "-9999px";
-      tempDiv.style.fontSize = `${formula.style.fontSize}px`;
+      tempDiv.style.fontSize = `${formula.style.fontSize}px`; // 元のフォントサイズ
       tempDiv.style.color = formula.style.color;
       tempDiv.style.fontFamily = "inherit";
       tempDiv.style.lineHeight = "1.2";
@@ -1581,9 +1693,34 @@ export const renderOverlayToCanvas = async (
       console.log(`🎨 SVG with embedded styles ready for canvas rendering: ${tempDiv.outerHTML}`);
       document.body.appendChild(tempDiv);
 
-      // SVGをcanvasに描画
+      // Canvas描画時の透明度を適用
+      ctx.save();
+      ctx.globalAlpha = opacity;
+
+      // SVGをCanvasに描画
       const svgElement = tempDiv.querySelector("svg");
       if (svgElement) {
+        // SVGのサイズを取得
+        let svgWidth = parseFloat(svgElement.getAttribute("width") || "0");
+        let svgHeight = parseFloat(svgElement.getAttribute("height") || "0");
+
+        // サイズが取得できない場合はBBoxから取得
+        if (svgWidth === 0 || svgHeight === 0) {
+          try {
+            const bbox = svgElement.getBBox();
+            svgWidth = bbox.width;
+            svgHeight = bbox.height;
+          } catch (e) {
+            // デフォルトサイズ
+            svgWidth = 100;
+            svgHeight = 50;
+          }
+        }
+
+        console.log(
+          `🎨 Original SVG size: ${svgWidth}x${svgHeight}, Scale: ${scale}, ScaleOrigin: ${scaleOrigin}`
+        );
+
         // 描画アニメーションを適用
         let processedSvg = svgElement;
         if (formula.animation?.type === "draw") {
@@ -1602,8 +1739,6 @@ export const renderOverlayToCanvas = async (
         }
 
         const svgData = new XMLSerializer().serializeToString(processedSvg);
-        console.log(`🎨 Serialized SVG data (first 200 chars):`, svgData.substring(0, 200));
-
         const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
         const svgUrl = URL.createObjectURL(svgBlob);
 
@@ -1622,27 +1757,100 @@ export const renderOverlayToCanvas = async (
             img.src = svgUrl;
           });
 
-          ctx.drawImage(svgImg, screenX, screenY);
+          // スケール原点の計算（プレビューと同じく左上基準）
+          let drawX = screenX + translateX;
+          let drawY = screenY;
+          const drawWidth = svgWidth * scale;
+          const drawHeight = svgHeight * scale;
+
+          // スケール原点に基づく描画位置の調整
+          switch (scaleOrigin) {
+            case "top-left":
+              // 左上基準（デフォルト）
+              break;
+            case "top-right":
+              // 右上基準
+              drawX = drawX - (drawWidth - svgWidth);
+              break;
+            case "bottom-left":
+              // 左下基準
+              drawY = drawY - (drawHeight - svgHeight);
+              break;
+            case "bottom-right":
+              // 右下基準
+              drawX = drawX - (drawWidth - svgWidth);
+              drawY = drawY - (drawHeight - svgHeight);
+              break;
+            case "center":
+              // 中央基準
+              drawX = drawX - (drawWidth - svgWidth) / 2;
+              drawY = drawY - (drawHeight - svgHeight) / 2;
+              break;
+            default:
+              break;
+          }
+
+          // SVGを指定した位置とサイズで描画
+          ctx.drawImage(svgImg, drawX, drawY, drawWidth, drawHeight);
 
           URL.revokeObjectURL(svgUrl);
-          console.log(`✅ Successfully rendered formula SVG at (${screenX}, ${screenY})`);
+
+          console.log(
+            `✅ Successfully rendered formula SVG at (${drawX}, ${drawY}) size ${drawWidth}x${drawHeight} with opacity=${opacity}, scale=${scale}, scaleOrigin=${scaleOrigin}`
+          );
         } catch (error) {
           console.warn("Failed to render formula SVG:", error);
         }
       } else {
         // SVGが見つからない場合はCanvas上に直接テキストを描画
         console.log("No SVG found, drawing text directly to canvas");
-        ctx.save();
+
+        const textWidth = formula.content.length * formula.style.fontSize * 0.6; // 概算
+        const textHeight = formula.style.fontSize;
+
+        // スケール原点に基づく描画位置の調整（プレビューと同じく左上基準）
+        let drawX = screenX + translateX;
+        let drawY = screenY;
+        const scaledFontSize = formula.style.fontSize * scale;
+        const scaledWidth = textWidth * scale;
+        const scaledHeight = textHeight * scale;
+
+        switch (scaleOrigin) {
+          case "top-left":
+            // 左上基準（デフォルト）
+            break;
+          case "top-right":
+            // 右上基準
+            drawX = drawX - (scaledWidth - textWidth);
+            break;
+          case "bottom-left":
+            // 左下基準
+            drawY = drawY - (scaledHeight - textHeight);
+            break;
+          case "bottom-right":
+            // 右下基準
+            drawX = drawX - (scaledWidth - textWidth);
+            drawY = drawY - (scaledHeight - textHeight);
+            break;
+          case "center":
+            // 中央基準
+            drawX = drawX - (scaledWidth - textWidth) / 2;
+            drawY = drawY - (scaledHeight - textHeight) / 2;
+            break;
+          default:
+            break;
+        }
+
         ctx.fillStyle = formula.style.color;
-        ctx.font = `${formula.style.fontSize}px Arial`;
-        ctx.textAlign = "center";
-        ctx.fillText(formula.content, screenX, screenY);
-        ctx.restore();
+        ctx.font = `${scaledFontSize}px Arial`;
+        ctx.textAlign = "left"; // 左上基準にするため left に変更
+        ctx.fillText(formula.content, drawX, drawY + scaledHeight); // ベースライン調整
         console.log(
-          `✅ Rendered formula as text at (${screenX}, ${screenY}): "${formula.content}"`
+          `✅ Rendered formula as text at (${drawX}, ${drawY}) fontSize=${scaledFontSize} with opacity=${opacity}, scale=${scale}: "${formula.content}"`
         );
       }
 
+      ctx.restore(); // 変換行列と透明度を復元
       document.body.removeChild(tempDiv);
     } catch (error) {
       console.error("Error rendering formula:", error);
@@ -1659,29 +1867,83 @@ export const renderOverlayToCanvas = async (
 
     let displayText = subtitle.text;
     let opacity = subtitle.style.opacity;
+    let translateX = 0;
+    let fontSize = subtitle.style.fontSize;
+    let scaleProgress = 1; // スケール進行度
+    let scaleOrigin = "center"; // スケール原点
 
-    // アニメーション効果
+    // 出現アニメーション効果
     switch (subtitle.animation?.type) {
       case "typewriter":
         displayText = getTypewriterText(
           subtitle.text,
           animationState.enterProgress || animationState.progress
         );
+        opacity = subtitle.style.opacity;
         break;
       case "fade":
         opacity =
           subtitle.style.opacity * (animationState.enterProgress || animationState.progress);
         break;
+      case "slide":
+        translateX = (1 - (animationState.enterProgress || animationState.progress)) * -100;
+        break;
+      case "scale": {
+        scaleProgress = animationState.enterProgress || animationState.progress;
+        fontSize = subtitle.style.fontSize * scaleProgress;
+        scaleOrigin = subtitle.animation?.scaleOrigin || "center";
+        break;
+      }
     }
 
-    // 文字描画
+    // 消去アニメーション効果
+    if (
+      subtitle.exitAnimation &&
+      subtitle.exitAnimation.type !== "none" &&
+      animationState.exitProgress &&
+      animationState.exitProgress > 0
+    ) {
+      switch (subtitle.exitAnimation.type) {
+        case "fade":
+          opacity = opacity * (1 - animationState.exitProgress);
+          break;
+        case "slide":
+          translateX = translateX + animationState.exitProgress * 100;
+          break;
+        case "scale": {
+          const exitScaleProgress = 1 - animationState.exitProgress;
+          scaleProgress = scaleProgress * exitScaleProgress;
+          fontSize = fontSize * exitScaleProgress;
+          scaleOrigin = subtitle.exitAnimation?.scaleOrigin || "center";
+          break;
+        }
+      }
+    }
+
+    // 文字描画（スケール原点に応じた位置調整付き）
+    ctx.save();
     ctx.globalAlpha = opacity * animationState.progress;
     ctx.fillStyle = subtitle.style.color;
-    ctx.font = `${subtitle.style.fontWeight || "normal"} ${subtitle.style.fontSize}px ${
+    ctx.font = `${subtitle.style.fontWeight || "normal"} ${fontSize}px ${
       subtitle.style.fontFamily || "Arial"
     }`;
     ctx.textAlign = (subtitle.style.textAlign as CanvasTextAlign) || "center";
-    ctx.fillText(displayText, screenX, screenY);
-    ctx.globalAlpha = 1;
+
+    // スケール原点に応じた位置オフセット（テキストサイズの推定）
+    const estimatedTextWidth = displayText.length * fontSize * 0.6; // 概算
+    const estimatedTextHeight = fontSize;
+    const scaleOffset = getCanvasScaleOffset(
+      scaleOrigin as "center" | "top-left" | "top-right" | "bottom-left" | "bottom-right",
+      estimatedTextWidth,
+      estimatedTextHeight,
+      scaleProgress
+    );
+
+    ctx.fillText(
+      displayText,
+      screenX + translateX + scaleOffset.offsetX,
+      screenY + scaleOffset.offsetY
+    );
+    ctx.restore();
   }
 };

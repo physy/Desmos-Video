@@ -594,6 +594,36 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
                     </select>
                   </div>
 
+                  {/* スケール原点設定（スケールアニメーションの場合のみ表示） */}
+                  {selectedElement.animation.type === "scale" && (
+                    <div>
+                      <label className="text-xs text-gray-500">スケール原点</label>
+                      <select
+                        value={selectedElement.animation.scaleOrigin || "center"}
+                        onChange={(e) =>
+                          handleUpdateElement({
+                            animation: {
+                              ...selectedElement.animation!,
+                              scaleOrigin: e.target.value as
+                                | "center"
+                                | "top-left"
+                                | "top-right"
+                                | "bottom-left"
+                                | "bottom-right",
+                            },
+                          })
+                        }
+                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                      >
+                        <option value="center">中央</option>
+                        <option value="top-left">左上</option>
+                        <option value="top-right">右上</option>
+                        <option value="bottom-left">左下</option>
+                        <option value="bottom-right">右下</option>
+                      </select>
+                    </div>
+                  )}
+
                   {/* 描画アニメーション専用オプション */}
                   {selectedElement.animation?.type === "draw" && (
                     <div className="space-y-2 pt-2 border-t border-gray-200">
@@ -827,7 +857,12 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
                         handleUpdateElement({
                           animation: {
                             ...selectedElement.animation!,
-                            type: e.target.value as "typewriter" | "fade" | "slide" | "none",
+                            type: e.target.value as
+                              | "typewriter"
+                              | "fade"
+                              | "slide"
+                              | "scale"
+                              | "none",
                           },
                         })
                       }
@@ -837,7 +872,7 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
                       <option value="typewriter">タイプライター</option>
                       <option value="fade">フェード</option>
                       <option value="slide">スライド</option>
-                      <option value="draw">描画</option>
+                      <option value="scale">スケール</option>
                     </select>
                   </div>
                   <div>
@@ -864,6 +899,36 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
                       <option value="ease-in-out">加減速 (ease-in-out)</option>
                     </select>
                   </div>
+
+                  {/* スケール原点設定（スケールアニメーションの場合のみ表示） */}
+                  {selectedElement.animation.type === "scale" && (
+                    <div>
+                      <label className="text-xs text-gray-500">スケール原点</label>
+                      <select
+                        value={selectedElement.animation.scaleOrigin || "center"}
+                        onChange={(e) =>
+                          handleUpdateElement({
+                            animation: {
+                              ...selectedElement.animation!,
+                              scaleOrigin: e.target.value as
+                                | "center"
+                                | "top-left"
+                                | "top-right"
+                                | "bottom-left"
+                                | "bottom-right",
+                            },
+                          })
+                        }
+                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                      >
+                        <option value="center">中央</option>
+                        <option value="top-left">左上</option>
+                        <option value="top-right">右上</option>
+                        <option value="bottom-left">左下</option>
+                        <option value="bottom-right">右下</option>
+                      </select>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -954,6 +1019,37 @@ export const FormulaEditPanel: React.FC<FormulaEditPanelProps> = ({
                     <option value="ease-in-out">加減速 (ease-in-out)</option>
                   </select>
                 </div>
+
+                {/* スケール原点設定（スケール消去アニメーションの場合のみ表示） */}
+                {selectedElement.exitAnimation?.type === "scale" && (
+                  <div>
+                    <label className="text-xs text-gray-500">スケール原点</label>
+                    <select
+                      value={selectedElement.exitAnimation?.scaleOrigin || "center"}
+                      onChange={(e) =>
+                        handleUpdateElement({
+                          exitAnimation: {
+                            ...selectedElement.exitAnimation!,
+                            scaleOrigin: e.target.value as
+                              | "center"
+                              | "top-left"
+                              | "top-right"
+                              | "bottom-left"
+                              | "bottom-right",
+                          },
+                        })
+                      }
+                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                    >
+                      <option value="center">中央</option>
+                      <option value="top-left">左上</option>
+                      <option value="top-right">右上</option>
+                      <option value="bottom-left">左下</option>
+                      <option value="bottom-right">右下</option>
+                    </select>
+                  </div>
+                )}
+
                 <div>
                   <label className="text-xs text-gray-500">継続時間(フレーム)</label>
                   <input
