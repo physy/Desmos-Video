@@ -34,6 +34,18 @@ mjx-container {
   padding: 0 !important;
 }
 
+.dcg-exppanel-outer__wrapper,
+.dcg-pillbox-view,
+.dcg-toast-view {
+  --dcg-custom-background-color: white !important;
+  --dcg-custom-background-color-shaded: white !important;
+  --dcg-checkbox-outline-color: white !important;
+}
+
+.dcg-expressionlist > span {
+  background-color: white;
+}
+
 /* Custom component styles */
 .slider {
   -webkit-appearance: none;

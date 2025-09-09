@@ -33,6 +33,7 @@ const OPTION_CATEGORIES = {
     "distributions",
   ],
   "Graph Display": [
+    "backgroundColor",
     "showGrid",
     "showXAxis",
     "showYAxis",
@@ -82,7 +83,11 @@ const OPTION_CATEGORIES = {
 } as const;
 
 // 値の型を判定
-const getOptionType = (key: string, value: unknown): "boolean" | "number" | "string" | "select" => {
+const getOptionType = (
+  key: string,
+  value: unknown
+): "boolean" | "number" | "string" | "select" | "color" => {
+  if (key === "backgroundColor") return "color";
   if (typeof value === "boolean") return "boolean";
   if (typeof value === "number") return "number";
   if (key.includes("ArrowMode")) return "select";
@@ -151,6 +156,7 @@ export const CalculatorOptionsPanel: React.FC<CalculatorOptionsPanelProps> = ({
     const optionType = getOptionType(selectedOption, defaultValue);
 
     if (optionType === "number") defaultValue = 1;
+    else if (optionType === "color") defaultValue = "#ffffff";
     else if (optionType === "string") defaultValue = "";
     else if (optionType === "select") {
       const selectOptions = getSelectOptions(selectedOption);
@@ -219,6 +225,17 @@ export const CalculatorOptionsPanel: React.FC<CalculatorOptionsPanelProps> = ({
           </select>
         );
       }
+
+      case "color":
+        return (
+          <input
+            type="color"
+            value={String(value) || "#ffffff"}
+            onChange={(e) => handleOptionChange(key, e.target.value)}
+            className="w-full h-8 p-0 border border-gray-300 rounded cursor-pointer"
+            title={String(value) || "#ffffff"}
+          />
+        );
 
       default:
         return (

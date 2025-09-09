@@ -262,7 +262,7 @@ export class StateManager {
           this.computeCalculator!.setState(state);
           this.computeCalculator!.controller.evaluator.notifyWhenSynced(() => {
             this.computeCalculator!.controller.getGrapher().asyncScreenshot(
-              { width, height, showLabels: true, targetPixelRatio },
+              { width, height, showLabels: true, targetPixelRatio, transparentBackground: true },
               (url: string) => resolve(url)
             );
           });
@@ -305,10 +305,27 @@ export class StateManager {
           this.screenshotCalculator!.setState(state);
           this.screenshotCalculator!.controller.evaluator.notifyWhenSynced(() => {
             this.screenshotCalculator!.controller.getGrapher().asyncScreenshot(
-              { width, height, showLabels: true, targetPixelRatio },
+              { width, height, showLabels: true, targetPixelRatio, transparentBackground: true },
               (url: string) => {
-                debugLog(`Screenshot completed successfully`);
-                resolve(url);
+                const image = new Image();
+                image.src = url;
+                const canvas = document.createElement("canvas");
+                canvas.width = width * targetPixelRatio;
+                canvas.height = height * targetPixelRatio;
+                const ctx = canvas.getContext("2d");
+                if (!ctx) {
+                  resolve(url);
+                  return;
+                }
+                ctx.fillStyle =
+                  this.screenshotCalculator?.controller.graphSettings.config.backgroundColor ||
+                  "#ffffff";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                image.decode().then(() => {
+                  ctx.drawImage(image, 0, 0, width, height);
+                  debugLog(`Screenshot completed successfully:`);
+                  resolve(canvas.toDataURL());
+                });
               }
             );
           });

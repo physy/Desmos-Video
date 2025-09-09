@@ -147,6 +147,13 @@ export interface GraphingCalculatorOptions {
   showYAxis?: boolean;
   randomSeed?: string;
 
+  // Advanced
+  beta3d?: boolean;
+  advancedStyling?: boolean;
+  authorMode?: boolean;
+  disableLighting?: boolean;
+  translucentOpacity?: boolean;
+
   // Legacy/Deprecated
   backgroundColor?: string;
   branding?: boolean;

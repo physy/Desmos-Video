@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { DesmosGraph } from "./components/DesmosGraph";
 import { TimelineControls } from "./components/TimelineControls";
 import GraphPreview from "./components/GraphPreview";
@@ -31,6 +31,22 @@ import { StateEventEditPanel } from "./components/StateEventEditPanel";
 const DEBUG_MODE = false;
 
 function App() {
+  // 初期プロジェクト定義
+  const INITIAL_PROJECT: AnimationProject = useMemo(() => {
+    return {
+      timeline: [],
+      stateEvents: [],
+      graphSettings: CALC_DEFAULT_GRAPH_SETTINGS,
+      videoExportSettings: DEFAULT_VIDEO_SETTINGS,
+      calculatorOptions: {
+        graphType: "2d",
+        backgroundColor: "#000000",
+      },
+      formulas: [],
+      subtitles: [],
+    };
+  }, []);
+
   // メニューシステムの型定義
   interface MenuItem {
     label: string;
@@ -106,26 +122,11 @@ function App() {
 
   // CalculatorOptionsの状態（初期値は最小限に）
   const [calculatorOptions, setCalculatorOptions] = useState<
-    GraphingCalculatorOptions & { graphType: "2d" | "3d" }
-  >({
-    graphType: "2d",
-  });
+    GraphingCalculatorOptions & { graphType?: "2d" | "3d" }
+  >(INITIAL_PROJECT.calculatorOptions || { graphType: "2d" });
 
   // VideoExportSettingsの状態（宣言を前方へ移動）
   const [videoSettings, setVideoSettings] = useState<VideoExportSettings>(DEFAULT_VIDEO_SETTINGS);
-
-  // 初期プロジェクト定義
-  const INITIAL_PROJECT: AnimationProject = {
-    timeline: [],
-    stateEvents: [],
-    graphSettings: CALC_DEFAULT_GRAPH_SETTINGS,
-    videoExportSettings: DEFAULT_VIDEO_SETTINGS,
-    calculatorOptions: {
-      graphType: "2d",
-    },
-    formulas: [],
-    subtitles: [],
-  };
 
   // 数式・字幕管理（プロジェクトから独立）
   const {
@@ -444,26 +445,8 @@ function App() {
 
   // 新規プロジェクト作成関数
   const createNewProject = useCallback(() => {
-    const initialProject: AnimationProject = {
-      timeline: [],
-      stateEvents: [],
-      graphSettings: CALC_DEFAULT_GRAPH_SETTINGS,
-      videoExportSettings: DEFAULT_VIDEO_SETTINGS,
-      calculatorOptions: {
-        keypad: false,
-        expressions: true,
-        settingsMenu: true,
-        expressionsTopbar: true,
-        zoomButtons: true,
-        showResetButtonOnGraphpaper: true,
-        graphType: "2d" as const,
-      },
-      formulas: [],
-      subtitles: [],
-    };
-
     // プロジェクトをリセット
-    setProject(initialProject);
+    setProject(INITIAL_PROJECT);
 
     // UI状態もリセット
     setSelectedFormulaElementId(null);
@@ -474,6 +457,7 @@ function App() {
     // 履歴をクリア
     clearHistory();
   }, [
+    INITIAL_PROJECT,
     setProject,
     clearHistory,
     seekTo,

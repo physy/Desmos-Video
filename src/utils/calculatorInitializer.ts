@@ -126,6 +126,9 @@ export function createScreenshotCalculator(
       branding: false,
       pasteGraphLink: false,
       language: "ja",
+      showGrid: false,
+      showXAxis: false,
+      showYAxis: false,
       ...calculatorOptions,
     };
 

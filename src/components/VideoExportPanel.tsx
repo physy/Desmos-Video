@@ -253,8 +253,9 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
             calculator.controller.evaluator.notifyWhenSynced(() => {
               calculator.controller
                 .getGrapher()
-                .asyncScreenshot({ width, height, showLabels: true }, (url: string) =>
-                  resolve(url)
+                .asyncScreenshot(
+                  { width, height, showLabels: true, transparentBackground: true },
+                  (url: string) => resolve(url)
                 );
             });
           });
@@ -277,8 +278,10 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
           throw new Error("Canvas context not available");
         }
 
-        // 背景を白で塗りつぶし
-        ctx.fillStyle = "#ffffff";
+        // 背景色をvideoSettingsから取得して適用
+        const backgroundColor =
+          calculator.controller.graphSettings.config.backgroundColor || "#ffffff";
+        ctx.fillStyle = backgroundColor;
         ctx.fillRect(0, 0, width, height);
 
         // グラフ画像を描画
