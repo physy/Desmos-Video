@@ -128,7 +128,7 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
             <label className="block text-sm font-medium text-gray-700 mb-1">Left</label>
             <input
               type="number"
-              value={editingEvent.bounds?.left || -10}
+              value={editingEvent.bounds?.left ?? -10}
               onChange={(e) => {
                 const currentBounds = deepCopy(
                   editingEvent.bounds || {
@@ -151,7 +151,7 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
             <label className="block text-sm font-medium text-gray-700 mb-1">Right</label>
             <input
               type="number"
-              value={editingEvent.bounds?.right || 10}
+              value={editingEvent.bounds?.right ?? 10}
               onChange={(e) => {
                 const currentBounds = deepCopy(
                   editingEvent.bounds || {
@@ -174,7 +174,7 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
             <label className="block text-sm font-medium text-gray-700 mb-1">Top</label>
             <input
               type="number"
-              value={editingEvent.bounds?.top || 10}
+              value={editingEvent.bounds?.top ?? 10}
               onChange={(e) => {
                 const currentBounds = deepCopy(
                   editingEvent.bounds || {
@@ -197,7 +197,7 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
             <label className="block text-sm font-medium text-gray-700 mb-1">Bottom</label>
             <input
               type="number"
-              value={editingEvent.bounds?.bottom || -10}
+              value={editingEvent.bounds?.bottom ?? -10}
               onChange={(e) => {
                 const currentBounds = deepCopy(
                   editingEvent.bounds || {
@@ -384,7 +384,7 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                 <label className="block text-sm font-medium text-gray-700 mb-1">開始値</label>
                 <input
                   type="number"
-                  value={currentAnimation.variable?.startValue || 0}
+                  value={currentAnimation.variable?.startValue ?? 0}
                   onChange={(e) => {
                     const variable = currentAnimation.variable || {
                       name: "",
@@ -406,7 +406,7 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                 <label className="block text-sm font-medium text-gray-700 mb-1">終了値</label>
                 <input
                   type="number"
-                  value={currentAnimation.variable?.endValue || 1}
+                  value={currentAnimation.variable?.endValue ?? 1}
                   onChange={(e) => {
                     const variable = currentAnimation.variable || {
                       name: "",
@@ -467,7 +467,7 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                 <label className="block text-sm font-medium text-gray-700 mb-1">開始値</label>
                 <input
                   type="number"
-                  value={currentAnimation.property?.startValue || 0}
+                  value={currentAnimation.property?.startValue ?? 0}
                   onChange={(e) => {
                     const property = currentAnimation.property || {
                       name: "",
@@ -491,7 +491,7 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                 <label className="block text-sm font-medium text-gray-700 mb-1">終了値</label>
                 <input
                   type="number"
-                  value={currentAnimation.property?.endValue || 1}
+                  value={currentAnimation.property?.endValue ?? 1}
                   onChange={(e) => {
                     const property = currentAnimation.property || {
                       name: "",
@@ -527,7 +527,7 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                 </label>
                 <input
                   type="number"
-                  value={currentAnimation.action?.steps || 10}
+                  value={currentAnimation.action?.steps ?? 10}
                   onChange={(e) => {
                     const action = currentAnimation.action || { steps: 10, frameInterval: 1 };
                     const newSteps = parseInt(e.target.value);
@@ -548,7 +548,7 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                 <label className="block text-sm font-medium text-gray-700 mb-1">フレーム間隔</label>
                 <input
                   type="number"
-                  value={currentAnimation.action?.frameInterval || 1}
+                  value={currentAnimation.action?.frameInterval ?? 1}
                   onChange={(e) => {
                     const action = currentAnimation.action || { steps: 10, frameInterval: 1 };
                     const newFrameInterval = parseInt(e.target.value);
@@ -568,12 +568,12 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
             </div>
 
             <div className="text-xs text-purple-600">
-              指定したIDのexpressionを {currentAnimation.action?.frameInterval || 1} フレームごとに{" "}
-              {currentAnimation.action?.steps || 10} ステップ実行します
+              指定したIDのexpressionを {currentAnimation.action?.frameInterval ?? 1} フレームごとに{" "}
+              {currentAnimation.action?.steps ?? 10} ステップ実行します
               <br />
               総実行時間:{" "}
-              {(currentAnimation.action?.steps || 10) *
-                (currentAnimation.action?.frameInterval || 1)}{" "}
+              {(currentAnimation.action?.steps ?? 10) *
+                (currentAnimation.action?.frameInterval ?? 1)}{" "}
               フレーム
             </div>
           </div>
