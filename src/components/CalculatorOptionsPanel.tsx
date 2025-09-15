@@ -33,6 +33,7 @@ const OPTION_CATEGORIES = {
     "distributions",
   ],
   "Graph Display": [
+    "perspectiveDistortion",
     "backgroundColor",
     "showGrid",
     "showXAxis",
@@ -87,6 +88,7 @@ const getOptionType = (
   key: string,
   value: unknown
 ): "boolean" | "number" | "string" | "select" | "color" => {
+  if (key === "perspectiveDistortion") return "number";
   if (key === "backgroundColor") return "color";
   if (typeof value === "boolean") return "boolean";
   if (typeof value === "number") return "number";

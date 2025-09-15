@@ -1432,7 +1432,15 @@ export const renderOverlayToCanvas = async (
   subtitles: SubtitleElement[],
   currentFrame: number,
   exportWidth: number,
-  exportHeight: number
+  exportHeight: number,
+  videoSettings?: {
+    graphPlacement?: {
+      scale?: number;
+      offsetX?: number;
+      offsetY?: number;
+      canvasBackgroundColor?: string;
+    };
+  }
 ): Promise<void> => {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;

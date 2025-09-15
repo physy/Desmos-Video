@@ -123,6 +123,7 @@ export interface GraphingCalculatorOptions {
   showEvaluationCopyButtons?: boolean;
   onEvaluationCopyClick?: (latex: string) => void;
   recursion?: boolean;
+  perspectiveDistortion?: number;
 
   // Axis Settings
   xAxisNumbers?: boolean;
@@ -191,14 +192,13 @@ export interface Calculator {
       height: number;
     };
   };
-  screenshot: (
-    options?: {
-      width?: number;
-      height?: number;
-      targetPixelRatio?: number;
-    },
-    callback?: (url: string) => void
-  ) => void;
+  screenshot: (options?: {
+    width?: number;
+    height?: number;
+    targetPixelRatio?: number;
+    transparentBackground?: boolean;
+    showLabels?: boolean;
+  }) => string;
   destroy: () => void;
   resize: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -54,30 +54,42 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
   const frameToSeconds = useCallback((frame: number) => (fps ? frame / fps : frame / 30), [fps]);
   const [settings, setSettings] = useState<VideoExportSettings>(() => {
     // 外部から渡された設定があればそれを使用、なければデフォルト設定を使用
-    return {
+    const baseSettings = {
       ...DEFAULT_VIDEO_SETTINGS,
       durationFrames: durationFrames,
       fps: fps || 30,
+    };
+
+    if (!videoSettings) {
+      return baseSettings;
+    }
+
+    return {
+      ...baseSettings,
       ...videoSettings,
       resolution: {
-        ...DEFAULT_VIDEO_SETTINGS.resolution,
-        ...(videoSettings?.resolution || {}),
+        ...baseSettings.resolution,
+        ...(videoSettings.resolution || {}),
       },
       quality: {
-        ...DEFAULT_VIDEO_SETTINGS.quality,
-        ...(videoSettings?.quality || {}),
+        ...baseSettings.quality,
+        ...(videoSettings.quality || {}),
       },
       format: {
-        ...DEFAULT_VIDEO_SETTINGS.format,
-        ...(videoSettings?.format || {}),
+        ...baseSettings.format,
+        ...(videoSettings.format || {}),
       },
       advanced: {
-        ...DEFAULT_VIDEO_SETTINGS.advanced,
-        ...(videoSettings?.advanced || {}),
+        ...baseSettings.advanced,
+        ...(videoSettings.advanced || {}),
+      },
+      graphPlacement: {
+        ...baseSettings.graphPlacement,
+        ...(videoSettings.graphPlacement || {}),
       },
       metadata: {
-        ...DEFAULT_VIDEO_SETTINGS.metadata,
-        ...(videoSettings?.metadata || {}),
+        ...baseSettings.metadata,
+        ...(videoSettings.metadata || {}),
       },
     };
   });
@@ -121,6 +133,10 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
           ...prev.advanced,
           ...(videoSettings.advanced || {}),
         },
+        graphPlacement: {
+          ...prev.graphPlacement,
+          ...(videoSettings.graphPlacement || {}),
+        },
         metadata: {
           ...prev.metadata,
           ...(videoSettings.metadata || {}),
@@ -160,6 +176,12 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
             DEFAULT_VIDEO_SETTINGS.format,
             prevSettings.format,
             updates.format || {}
+          ),
+          graphPlacement: Object.assign(
+            {},
+            DEFAULT_VIDEO_SETTINGS.graphPlacement,
+            prevSettings.graphPlacement,
+            updates.graphPlacement || {}
           ),
           metadata: Object.assign(
             {},
@@ -247,16 +269,41 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
         const width = Math.round((resolution.width ?? 1920) * pixelRatio);
         const height = Math.round((resolution.height ?? 1080) * pixelRatio);
 
+        // グラフ配置設定を取得
+        const graphScale = settings.graphPlacement?.scale || 1.0;
+        const graphOffsetX = settings.graphPlacement?.offsetX || 0;
+        const graphOffsetY = settings.graphPlacement?.offsetY || 0;
+
+        // グラフ画像のサイズを計算（拡大率を適用）
+        let scaledGraphWidth = Math.round(width * graphScale);
+        let scaledGraphHeight = Math.round(height * graphScale);
+
         let imageUrl: string | null = null;
         if (typeof calculator.asyncScreenshot === "function") {
           imageUrl = await new Promise<string>((resolve) => {
             calculator.controller.evaluator.notifyWhenSynced(() => {
-              calculator.controller
-                .getGrapher()
-                .asyncScreenshot(
-                  { width, height, showLabels: true, transparentBackground: true },
+              if (calculator.controller.graphSettings.product === "graphing-3d") {
+                // 3Dは正方形で取得
+                scaledGraphWidth = Math.min(scaledGraphWidth, scaledGraphHeight);
+                scaledGraphHeight = scaledGraphWidth;
+                calculator.controller.getGrapher().asyncScreenshot(
+                  {
+                    width: scaledGraphWidth / 2, // 何故か倍の大きさで撮影される
+                    transparentBackground: true,
+                  },
                   (url: string) => resolve(url)
                 );
+              } else {
+                calculator.controller.getGrapher().asyncScreenshot(
+                  {
+                    width: scaledGraphWidth,
+                    height: scaledGraphHeight,
+                    showLabels: true,
+                    transparentBackground: true,
+                  },
+                  (url: string) => resolve(url)
+                );
+              }
             });
           });
         }
@@ -278,14 +325,18 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
           throw new Error("Canvas context not available");
         }
 
-        // 背景色をvideoSettingsから取得して適用
-        const backgroundColor =
+        // キャンバスの背景色をDesmosの設定から取得
+        const calculatorBackgroundColor =
           calculator.controller.graphSettings.config.backgroundColor || "#ffffff";
-        ctx.fillStyle = backgroundColor;
+        ctx.fillStyle = calculatorBackgroundColor;
         ctx.fillRect(0, 0, width, height);
 
-        // グラフ画像を描画
-        ctx.drawImage(img, 0, 0, width, height);
+        // グラフ画像の配置位置を計算（中央揃え＋オフセット）
+        const graphX = (width - scaledGraphWidth) / 2 + graphOffsetX;
+        const graphY = (height - scaledGraphHeight) / 2 + graphOffsetY;
+
+        // グラフ画像をそのままのサイズで描画（既に適切なサイズでスクリーンショット取得済み）
+        ctx.drawImage(img, graphX, graphY);
 
         // OverlayRendererの描画ロジックを使用して数式と字幕を描画
         console.log(
@@ -294,7 +345,15 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
         if (formulas && formulas.length > 0) {
           console.log(`🧮 First formula:`, formulas[0]);
         }
-        await renderOverlayToCanvas(canvas, formulas || [], subtitles || [], i, width, height);
+        await renderOverlayToCanvas(
+          canvas,
+          formulas || [],
+          subtitles || [],
+          i,
+          width,
+          height,
+          settings
+        );
 
         const pngBlob: Blob = await new Promise((resolve) => {
           canvas.toBlob((blob) => resolve(blob!), "image/png");
@@ -616,56 +675,86 @@ export const VideoExportPanel: React.FC<VideoExportPanelProps> = ({
               className="w-full"
             />
           </div>
-          {/* <div className="space-y-1">
-            <label className="flex items-center">
+        </div>
+      </div>
+
+      {/* グラフ配置設定 */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-medium text-gray-700 border-b pb-1">グラフ配置設定</h3>
+        <div className="space-y-2">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              グラフの拡大率: {settings.graphPlacement?.scale || 1.0}x
+            </label>
+            <input
+              key="graph-scale-input"
+              type="range"
+              min="0.1"
+              max="3.0"
+              step="0.1"
+              value={settings.graphPlacement?.scale || 1.0}
+              onChange={(e) =>
+                handleSettingsChange({
+                  graphPlacement: {
+                    scale: parseFloat(e.target.value),
+                    offsetX: settings.graphPlacement?.offsetX || 0,
+                    offsetY: settings.graphPlacement?.offsetY || 0,
+                  },
+                })
+              }
+              className="w-full"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                X方向オフセット (px)
+              </label>
               <input
-                type="checkbox"
-                checked={settings.advanced.antialias}
+                key="graph-offset-x-input"
+                type="number"
+                value={settings.graphPlacement?.offsetX || 0}
                 onChange={(e) =>
                   handleSettingsChange({
-                    advanced: {
-                      ...settings.advanced,
-                      antialias: e.target.checked,
+                    graphPlacement: {
+                      scale: settings.graphPlacement?.scale || 1.0,
+                      offsetX: parseInt(e.target.value) || 0,
+                      offsetY: settings.graphPlacement?.offsetY || 0,
                     },
                   })
                 }
-                className="mr-2"
+                step="10"
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <span className="text-sm">アンチエイリアス</span>
-            </label>
-            <label className="flex items-center">
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Y方向オフセット (px)
+              </label>
               <input
-                type="checkbox"
-                checked={settings.advanced.motionBlur}
+                key="graph-offset-y-input"
+                type="number"
+                value={settings.graphPlacement?.offsetY || 0}
                 onChange={(e) =>
                   handleSettingsChange({
-                    advanced: {
-                      ...settings.advanced,
-                      motionBlur: e.target.checked,
+                    graphPlacement: {
+                      scale: settings.graphPlacement?.scale || 1.0,
+                      offsetX: settings.graphPlacement?.offsetX || 0,
+                      offsetY: parseInt(e.target.value) || 0,
                     },
                   })
                 }
-                className="mr-2"
+                step="10"
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <span className="text-sm">モーションブラー（予定）</span>
-            </label>
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={settings.advanced.frameInterpolation}
-                onChange={(e) =>
-                  handleSettingsChange({
-                    advanced: {
-                      ...settings.advanced,
-                      frameInterpolation: e.target.checked,
-                    },
-                  })
-                }
-                className="mr-2"
-              />
-              <span className="text-sm">フレーム補間（予定）</span>
-            </label>
-          </div> */}
+            </div>
+          </div>
+
+          <div className="text-xs text-gray-500">
+            グラフを配置したい位置とサイズを調整できます。
+          </div>
         </div>
       </div>
 

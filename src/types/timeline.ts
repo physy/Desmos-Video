@@ -259,6 +259,13 @@ export interface VideoExportSettings {
     frameInterpolation: boolean;
   };
 
+  // グラフの配置設定
+  graphPlacement?: {
+    scale?: number; // グラフの拡大率 (デフォルト: 1.0)
+    offsetX?: number; // X方向のオフセット (ピクセル)
+    offsetY?: number; // Y方向のオフセット (ピクセル)
+  };
+
   // メタデータ
   metadata: {
     title?: string;

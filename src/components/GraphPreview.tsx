@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import type { Calculator } from "../types/desmos";
 import type { FormulaElement, SubtitleElement } from "../types/formula";
 import { OverlayRenderer } from "./OverlayRenderer";
@@ -45,6 +45,7 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
   // <div>現在: {currentFrame}フレーム ({frameToSeconds(currentFrame).toFixed(2)}秒)</div>
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [compositeImageUrl, setCompositeImageUrl] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
   const [graphBounds, setGraphBounds] = useState<{
@@ -147,6 +148,75 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
     };
   }, []);
 
+  // StateManagerのvideoSettingsを優先して取得
+  const effectiveSettings = stateManager?.videoSettings ?? videoSettings;
+
+  // canvasで合成画像を作成する関数
+  const createCompositeImage = useCallback(
+    async (graphImageUrl: string, canvasWidth: number, canvasHeight: number) => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+        const ctx = canvas.getContext("2d");
+
+        if (!ctx) {
+          console.error("Canvas context not available");
+          return;
+        }
+
+        // グラフ配置設定を取得
+        const graphScale = effectiveSettings?.graphPlacement?.scale || 1.0;
+        const graphOffsetX = effectiveSettings?.graphPlacement?.offsetX || 0;
+        const graphOffsetY = effectiveSettings?.graphPlacement?.offsetY || 0;
+
+        // Desmosのグラフ設定から背景色を取得
+        const calculatorBackgroundColor =
+          computeCalculator?.controller?.graphSettings?.config?.backgroundColor || "#ffffff";
+
+        // キャンバスを背景色で塗りつぶし
+        ctx.fillStyle = calculatorBackgroundColor;
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+        // グラフ画像を読み込み
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const image = new Image();
+          image.crossOrigin = "anonymous";
+          image.onload = () => resolve(image);
+          image.onerror = reject;
+          image.src = graphImageUrl;
+        });
+
+        // グラフ画像のサイズと位置を計算
+        const scaledGraphWidth = canvasWidth * graphScale;
+        const scaledGraphHeight = canvasHeight * graphScale;
+        const graphX = (canvasWidth - scaledGraphWidth) / 2 + graphOffsetX;
+        const graphY = (canvasHeight - scaledGraphHeight) / 2 + graphOffsetY;
+
+        // グラフ画像を指定された位置とサイズで描画
+        ctx.drawImage(img, graphX, graphY, scaledGraphWidth, scaledGraphHeight);
+
+        // 合成された画像のDataURLを設定
+        const compositeDataUrl = canvas.toDataURL("image/png");
+        setCompositeImageUrl(compositeDataUrl);
+
+        console.log("Composite image created with settings:", {
+          graphScale,
+          graphOffsetX,
+          graphOffsetY,
+          calculatorBackgroundColor,
+          graphPosition: { x: graphX, y: graphY },
+          graphSize: { width: scaledGraphWidth, height: scaledGraphHeight },
+        });
+      } catch (error) {
+        console.error("Error creating composite image:", error);
+        // エラーの場合は元の画像をそのまま使用
+        setCompositeImageUrl(graphImageUrl);
+      }
+    },
+    [effectiveSettings, computeCalculator?.controller?.graphSettings?.config?.backgroundColor]
+  );
+
   useEffect(() => {
     let cancelled = false;
     const generatePreview = async () => {
@@ -160,6 +230,13 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
       if (cachedScreenshot) {
         console.log("Using cached screenshot");
         setImageUrl(cachedScreenshot);
+
+        // キャッシュされた画像でも合成画像を作成
+        const pixelRatio = effectiveSettings?.advanced?.targetPixelRatio ?? 1;
+        const width = Math.round((effectiveSettings?.resolution?.width ?? 1920) * pixelRatio);
+        const height = Math.round((effectiveSettings?.resolution?.height ?? 1080) * pixelRatio);
+        await createCompositeImage(cachedScreenshot, width, height);
+
         setLoading(false);
         return;
       }
@@ -168,8 +245,7 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
       // 指定時刻の状態を計算用calculatorに適用
       await stateManager.applyStateAtFrame(currentFrame, computeCalculator, false);
 
-      // StateManagerのvideoSettingsを優先して取得
-      const effectiveSettings = stateManager?.videoSettings ?? videoSettings;
+      // 設定値を取得
       const pixelRatio = effectiveSettings?.advanced?.targetPixelRatio ?? 1;
       const width = Math.round((effectiveSettings?.resolution?.width ?? 1920) * pixelRatio);
       const height = Math.round((effectiveSettings?.resolution?.height ?? 1080) * pixelRatio);
@@ -210,6 +286,10 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
         );
         if (!cancelled) {
           setImageUrl(screenshotUrl);
+
+          // canvasで合成画像を作成
+          await createCompositeImage(screenshotUrl, width, height);
+
           // キャッシュ保存
           if (typeof stateManager.setScreenshotAtFrame === "function") {
             stateManager.setScreenshotAtFrame(currentFrame, screenshotUrl);
@@ -225,10 +305,17 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [computeCalculator, currentFrame, stateManager, videoSettings, fps]);
+  }, [
+    computeCalculator,
+    currentFrame,
+    stateManager,
+    videoSettings,
+    fps,
+    createCompositeImage,
+    effectiveSettings,
+  ]);
 
   // エクスポート解像度とコンテナサイズの比率計算
-  const effectiveSettings = stateManager?.videoSettings ?? videoSettings;
   const exportWidth = effectiveSettings?.resolution?.width ?? 1920;
   const exportHeight = effectiveSettings?.resolution?.height ?? 1080;
 
@@ -261,18 +348,15 @@ const GraphPreview: React.FC<GraphPreviewProps> = ({
   });
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full flex items-center justify-center bg-gray-100 relative"
-    >
-      {!imageUrl ? (
+    <div ref={containerRef} className="w-full h-full flex items-center justify-center relative">
+      {!compositeImageUrl ? (
         <span>プレビューを生成中...</span>
       ) : (
         <>
           <img
-            src={imageUrl}
+            src={compositeImageUrl}
             alt="Graph Preview"
-            className="w-full h-full object-contain bg-white touch-none no-drag"
+            className="w-full h-full object-contain touch-none no-drag"
           />
           {/* 数式・字幕オーバーレイ */}
           <OverlayRenderer

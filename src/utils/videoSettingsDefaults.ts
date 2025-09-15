@@ -18,5 +18,10 @@ export const DEFAULT_VIDEO_SETTINGS: VideoExportSettings = {
     motionBlur: false,
     frameInterpolation: false,
   },
+  graphPlacement: {
+    scale: 1.0,
+    offsetX: 0,
+    offsetY: 0,
+  },
   metadata: { title: "Desmos Animation", description: "", author: "", tags: [] },
 };
