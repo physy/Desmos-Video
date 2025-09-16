@@ -97,6 +97,8 @@ export interface UnifiedEvent {
     right: number;
     top: number;
     bottom: number;
+    zmin?: number; // 3Dグラフの場合のz軸最小値
+    zmax?: number; // 3Dグラフの場合のz軸最大値
   };
   // Animation event properties - フレーム数基準
   animation?: {
@@ -132,18 +134,27 @@ export interface UnifiedEvent {
         endValue: number; // 終了時のスケール倍率
         centerX?: number; // スケールの中心X座標（デフォルト: 現在のビュー中心）
         centerY?: number; // スケールの中心Y座標（デフォルト: 現在のビュー中心）
+        centerZ?: number; // 3D用：スケールの中心Z座標（デフォルト: 現在のビュー中心）
       };
 
       // 並進移動
       translation?: {
         endX: number; // 終了時のX位置
         endY: number; // 終了時のY位置
+        endZ?: number; // 3D用：終了時のZ位置（オプション）
         mode: "displacement" | "absolute"; // 変位指定 or 絶対座標指定
       };
 
       // 直接的なバウンズ指定（従来の動作）
       direct?: {
-        endBounds: { left: number; right: number; top: number; bottom: number };
+        endBounds: {
+          left: number;
+          right: number;
+          top: number;
+          bottom: number;
+          zmin?: number;
+          zmax?: number;
+        };
       };
     };
 

@@ -217,6 +217,74 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
             />
           </div>
         </div>
+
+        {/* 3D用のZ軸設定 */}
+        <div className="mt-4">
+          <h4 className="text-sm font-medium text-gray-700 mb-3">
+            3Dグラフ用Z軸設定（オプション）
+          </h4>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Z Min</label>
+              <input
+                type="number"
+                value={editingEvent.bounds?.zmin ?? ""}
+                onChange={(e) => {
+                  const currentBounds = deepCopy(
+                    editingEvent.bounds || {
+                      left: -10,
+                      right: 10,
+                      top: 10,
+                      bottom: -10,
+                    }
+                  );
+                  if (e.target.value === "") {
+                    delete currentBounds.zmin;
+                  } else {
+                    currentBounds.zmin = parseFloat(e.target.value);
+                  }
+
+                  handleEventChange({
+                    bounds: currentBounds,
+                  });
+                }}
+                placeholder="3Dグラフの場合のZ最小値"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Z Max</label>
+              <input
+                type="number"
+                value={editingEvent.bounds?.zmax ?? ""}
+                onChange={(e) => {
+                  const currentBounds = deepCopy(
+                    editingEvent.bounds || {
+                      left: -10,
+                      right: 10,
+                      top: 10,
+                      bottom: -10,
+                    }
+                  );
+                  if (e.target.value === "") {
+                    delete currentBounds.zmax;
+                  } else {
+                    currentBounds.zmax = parseFloat(e.target.value);
+                  }
+
+                  handleEventChange({
+                    bounds: currentBounds,
+                  });
+                }}
+                placeholder="3Dグラフの場合のZ最大値"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="text-xs text-gray-500 mt-2">
+            3Dグラフの場合のみ使用されます。2Dグラフの場合は空欄のままにしてください。
+          </div>
+        </div>
       </div>
     );
   };
@@ -732,6 +800,28 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                             className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                           />
                         </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            中心Z（オプション）
+                          </label>
+                          <input
+                            type="number"
+                            value={currentAnimation.bounds.scale.centerZ ?? ""}
+                            onChange={(e) => {
+                              const bounds = currentAnimation.bounds || {};
+                              const scale = bounds.scale || { endValue: 2 };
+                              scale.centerZ = e.target.value
+                                ? parseFloat(e.target.value)
+                                : undefined;
+                              bounds.scale = scale;
+                              handleEventChange({
+                                animation: { ...currentAnimation, bounds },
+                              });
+                            }}
+                            placeholder="自動"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
                       </div>
                       <div className="text-xs text-blue-600">
                         開始スケールは1.0固定（現在のビュー）。終了スケールまでアニメーションします。
@@ -849,6 +939,45 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                         </div>
                       </div>
 
+                      {/* 3D用のZ軸移動設定 */}
+                      <div className="mt-3 p-2 border border-green-300 rounded bg-green-25">
+                        <div className="text-xs font-medium text-green-800 mb-2">
+                          3Dグラフ用Z軸移動（オプション）
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            終了Z
+                          </label>
+                          <input
+                            type="number"
+                            value={currentAnimation.bounds.translation.endZ ?? ""}
+                            onChange={(e) => {
+                              const bounds = currentAnimation.bounds || {};
+                              const translation = bounds.translation || {
+                                endX: 0,
+                                endY: 0,
+                                mode: "displacement" as const,
+                              };
+                              if (e.target.value === "") {
+                                delete translation.endZ;
+                              } else {
+                                translation.endZ = parseFloat(e.target.value);
+                              }
+                              bounds.translation = translation;
+                              handleEventChange({
+                                animation: { ...currentAnimation, bounds },
+                              });
+                            }}
+                            step="0.1"
+                            placeholder="Z軸移動なし"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div className="text-xs text-green-500 mt-1">
+                          空欄の場合はZ軸方向への移動は行われません
+                        </div>
+                      </div>
+
                       <div className="text-xs text-green-600">
                         {currentAnimation.bounds.translation.mode === "displacement"
                           ? "変位モード: 現在の位置からの相対的な移動量を指定（開始は0）"
@@ -945,6 +1074,67 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                         }}
                         className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
+                    </div>
+                  </div>
+
+                  {/* 3D用のZ軸設定 */}
+                  <div className="mt-3">
+                    <div className="text-xs text-gray-600 mb-2">
+                      3Dグラフ用Z軸設定（オプション）
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Z Min
+                        </label>
+                        <input
+                          type="number"
+                          value={currentAnimation.bounds.direct.endBounds.zmin ?? ""}
+                          onChange={(e) => {
+                            const bounds = currentAnimation.bounds || {};
+                            const direct = bounds.direct || {
+                              endBounds: { left: -5, right: 5, top: 5, bottom: -5 },
+                            };
+                            if (e.target.value === "") {
+                              delete direct.endBounds.zmin;
+                            } else {
+                              direct.endBounds.zmin = parseFloat(e.target.value);
+                            }
+                            bounds.direct = direct;
+                            handleEventChange({
+                              animation: { ...currentAnimation, bounds },
+                            });
+                          }}
+                          placeholder="Z最小値"
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Z Max
+                        </label>
+                        <input
+                          type="number"
+                          value={currentAnimation.bounds.direct.endBounds.zmax ?? ""}
+                          onChange={(e) => {
+                            const bounds = currentAnimation.bounds || {};
+                            const direct = bounds.direct || {
+                              endBounds: { left: -5, right: 5, top: 5, bottom: -5 },
+                            };
+                            if (e.target.value === "") {
+                              delete direct.endBounds.zmax;
+                            } else {
+                              direct.endBounds.zmax = parseFloat(e.target.value);
+                            }
+                            bounds.direct = direct;
+                            handleEventChange({
+                              animation: { ...currentAnimation, bounds },
+                            });
+                          }}
+                          placeholder="Z最大値"
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

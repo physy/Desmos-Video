@@ -549,16 +549,14 @@ export class StateManager {
       };
     } else if (animation.type === "bounds" && animation.bounds) {
       // バウンズアニメーションの補間処理
-      const boundsAnimation = { ...animation.bounds };
-
+      const boundsAnimation = deepCopy(animation.bounds);
       // スケールアニメーション
       if (boundsAnimation.scale) {
         // 開始値1.0から終了値まで補間
         const currentScale = 1.0 + (boundsAnimation.scale.endValue - 1.0) * easedProgress;
         boundsAnimation.scale = {
+          ...boundsAnimation.scale,
           endValue: currentScale,
-          centerX: boundsAnimation.scale.centerX,
-          centerY: boundsAnimation.scale.centerY,
         };
       }
 
@@ -568,10 +566,14 @@ export class StateManager {
         const currentX = boundsAnimation.translation.endX * easedProgress;
         const currentY = boundsAnimation.translation.endY * easedProgress;
         boundsAnimation.translation = {
+          ...boundsAnimation.translation,
           endX: currentX,
           endY: currentY,
-          mode: boundsAnimation.translation.mode,
         };
+        if (boundsAnimation.translation.endZ !== undefined) {
+          const currentZ = boundsAnimation.translation.endZ * easedProgress;
+          boundsAnimation.translation.endZ = currentZ;
+        }
       }
 
       // 直接的なバウンズ指定（この場合は開始バウンズが必要なため、実装を見直す必要がある）
@@ -665,12 +667,29 @@ export class StateManager {
     this.computeCalculator.setState(previousState);
 
     try {
-      this.computeCalculator.setMathBounds({
+      const boundsToApply: {
+        left: number;
+        right: number;
+        top: number;
+        bottom: number;
+        zmin?: number;
+        zmax?: number;
+      } = {
         left: event.bounds.left,
         right: event.bounds.right,
         top: event.bounds.top,
         bottom: event.bounds.bottom,
-      });
+      };
+
+      // 3Dグラフでzmin, zmaxが指定されている場合は追加
+      if (event.bounds.zmin !== undefined) {
+        boundsToApply.zmin = event.bounds.zmin;
+      }
+      if (event.bounds.zmax !== undefined) {
+        boundsToApply.zmax = event.bounds.zmax;
+      }
+
+      this.computeCalculator.setMathBounds(boundsToApply);
       debugLog(`Applied bounds:`, event.bounds);
     } catch (error) {
       debugLog(`Error applying bounds:`, error);
@@ -874,6 +893,13 @@ export class StateManager {
         right: previousState.graph.viewport.xmax,
         top: previousState.graph.viewport.ymax,
         bottom: previousState.graph.viewport.ymin,
+        ...(previousState.graph.viewport.zmax !== undefined &&
+        previousState.graph.viewport.zmin !== undefined
+          ? {
+              zmin: previousState.graph.viewport.zmin,
+              zmax: previousState.graph.viewport.zmax,
+            }
+          : {}),
       };
 
       let newBounds = { ...currentBounds };
@@ -881,7 +907,23 @@ export class StateManager {
       // 直接的なバウンズ指定の場合（補間は上位で処理済み）
       if (boundsAnimation.direct) {
         const { endBounds } = boundsAnimation.direct;
-        newBounds = { ...endBounds };
+        newBounds = {
+          left: endBounds.left,
+          right: endBounds.right,
+          top: endBounds.top,
+          bottom: endBounds.bottom,
+        };
+
+        // 3D対応：zmin, zmaxが指定されている場合は追加
+        const newBounds3D: typeof newBounds & { zmin?: number; zmax?: number } = newBounds;
+        if (endBounds.zmin !== undefined) {
+          newBounds3D.zmin = endBounds.zmin;
+        }
+        if (endBounds.zmax !== undefined) {
+          newBounds3D.zmax = endBounds.zmax;
+        }
+        newBounds = newBounds3D;
+
         debugLog(`Applied direct bounds animation:`, newBounds);
       }
       // スケール・並進移動による計算の場合
@@ -892,12 +934,26 @@ export class StateManager {
         let centerX = (currentBounds.left + currentBounds.right) / 2;
         let centerY = (currentBounds.top + currentBounds.bottom) / 2;
 
+        // 3D対応：Z軸の情報も取得
+        const viewport: Record<string, unknown> = previousState.graph.viewport;
+        const currentZMin = viewport.zmin as number | undefined;
+        const currentZMax = viewport.zmax as number | undefined;
+        const currentZDepth =
+          currentZMax !== undefined && currentZMin !== undefined
+            ? currentZMax - currentZMin
+            : undefined;
+        let centerZ =
+          currentZDepth !== undefined && currentZMin !== undefined && currentZMax !== undefined
+            ? (currentZMin + currentZMax) / 2
+            : undefined;
+
         // スケールアニメーション（補間は上位で処理済み）
         if (boundsAnimation.scale) {
           const scale = boundsAnimation.scale.endValue;
           const scaleCenter = {
             x: boundsAnimation.scale.centerX ?? centerX,
             y: boundsAnimation.scale.centerY ?? centerY,
+            z: boundsAnimation.scale.centerZ ?? centerZ,
           };
 
           // スケールの中心を基準にして新しいバウンズを計算
@@ -911,9 +967,21 @@ export class StateManager {
             bottom: scaleCenter.y - newHeight / 2,
           };
 
+          // 3D対応：Z軸のスケール処理
+          if (currentZDepth !== undefined && scaleCenter.z !== undefined) {
+            const newZDepth = currentZDepth / scale;
+            const newBounds3D = newBounds as typeof newBounds & { zmin?: number; zmax?: number };
+            newBounds3D.zmin = scaleCenter.z - newZDepth / 2;
+            newBounds3D.zmax = scaleCenter.z + newZDepth / 2;
+            newBounds = newBounds3D;
+          }
+
           // centerを更新（並進移動で使用）
           centerX = scaleCenter.x;
           centerY = scaleCenter.y;
+          if (scaleCenter.z !== undefined) {
+            centerZ = scaleCenter.z;
+          }
 
           debugLog(`Applied scale animation: scale=${scale}, center=(${centerX}, ${centerY})`);
         }
@@ -923,15 +991,20 @@ export class StateManager {
           const translation = boundsAnimation.translation;
           let offsetX = 0;
           let offsetY = 0;
+          let offsetZ = 0;
 
           if (translation.mode === "displacement") {
             // 変位モード: 終了変位を使用
             offsetX = translation.endX;
             offsetY = translation.endY;
+            offsetZ = translation.endZ ?? 0; // 3D対応
           } else if (translation.mode === "absolute") {
             // 絶対座標モード: 現在の中心から目標位置への変位
             offsetX = translation.endX - centerX;
             offsetY = translation.endY - centerY;
+            if (translation.endZ !== undefined && centerZ !== undefined) {
+              offsetZ = translation.endZ - centerZ; // 3D対応
+            }
           }
 
           newBounds = {
@@ -939,14 +1012,17 @@ export class StateManager {
             right: newBounds.right + offsetX,
             top: newBounds.top + offsetY,
             bottom: newBounds.bottom + offsetY,
+            zmin: newBounds.zmin !== undefined ? newBounds.zmin + offsetZ : undefined,
+            zmax: newBounds.zmax !== undefined ? newBounds.zmax + offsetZ : undefined,
           };
 
           debugLog(
-            `Applied translation animation: offset=(${offsetX}, ${offsetY}), mode=${translation.mode}`
+            `Applied translation animation: offset=(${offsetX}, ${offsetY}, ${offsetZ}), mode=${translation.mode}`
           );
         }
       }
 
+      console.log("🚀", "New computed bounds:", newBounds);
       // 新しいバウンズを適用
       this.computeCalculator.setMathBounds(newBounds);
       debugLog(

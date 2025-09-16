@@ -24,8 +24,10 @@ export interface DesmosState {
     viewport: {
       xmin: number;
       ymin: number;
+      zmin?: number;
       xmax: number;
       ymax: number;
+      zmax?: number;
     };
     showGrid?: boolean;
     showXAxis?: boolean;
@@ -37,6 +39,8 @@ export interface DesmosState {
       ymin: string;
       ymax: string;
     };
+    // [xAxis.x, xAxis.y, xAxis.z, yAxis.x, yAxis.y, yAxis.z, zAxis.x, zAxis.y, zAxis.z]
+    worldRotation3D?: [number, number, number, number, number, number, number, number, number];
   };
   expressions: {
     list: DesmosExpression[];
