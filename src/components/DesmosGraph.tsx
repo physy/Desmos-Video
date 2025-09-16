@@ -97,6 +97,7 @@ export const DesmosGraph: React.FC<DesmosGraphProps> = ({
       showXAxis: false,
       showYAxis: false,
       advancedStyling: true,
+      beta3d: true, // 3Dグラフの自由な回転に必須
       colors: {
         BLUE_A: "#C7E9F1",
         BLUE_B: "#9CDCEB",

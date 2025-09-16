@@ -102,7 +102,7 @@ export interface UnifiedEvent {
   };
   // Animation event properties - フレーム数基準
   animation?: {
-    type: "variable" | "property" | "action" | "bounds";
+    type: "variable" | "property" | "action" | "bounds" | "rotation";
     targetId: string; // 対象のexpression ID
     durationFrames: number; // アニメーションフレーム数
 
@@ -156,6 +156,31 @@ export interface UnifiedEvent {
           zmax?: number;
         };
       };
+    };
+
+    // 3D回転アニメーション用（相対回転のみ - どれだけ回転するかを指定）
+    rotation?: {
+      // 回転方式の選択
+      mode: "axis" | "euler";
+
+      // 軸回転モード（mode="axis"）- どれだけ回転するかを指定
+      axis?: {
+        x: number; // 回転軸のX成分
+        y: number; // 回転軸のY成分
+        z: number; // 回転軸のZ成分
+        angle: number; // 回転角度（ラジアン）
+      };
+
+      // オイラー角モード（mode="euler"）- どれだけ回転するかを指定
+      euler?: {
+        x: number; // X軸回りの回転（ラジアン）
+        y: number; // Y軸回りの回転（ラジアン）
+        z: number; // Z軸回りの回転（ラジアン）
+        order: "XYZ" | "YXZ" | "ZXY" | "ZYX" | "YZX" | "XZY"; // 回転順序
+      };
+
+      // 補間された行列（内部使用用）
+      interpolatedMatrix?: [number, number, number, number, number, number, number, number, number];
     };
 
     // イージング関数

@@ -1,3 +1,189 @@
+// 回転計算用のユーティリティ関数
+class RotationUtils {
+  // 軸とアングルから回転行列を生成
+  static axisAngleToMatrix(
+    x: number,
+    y: number,
+    z: number,
+    angle: number
+  ): [number, number, number, number, number, number, number, number, number] {
+    // 軸を正規化
+    const length = Math.sqrt(x * x + y * y + z * z);
+    if (length === 0) return [1, 0, 0, 0, 1, 0, 0, 0, 1];
+
+    const nx = x / length;
+    const ny = y / length;
+    const nz = z / length;
+
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    const t = 1 - c;
+
+    return [
+      t * nx * nx + c,
+      t * nx * ny - s * nz,
+      t * nx * nz + s * ny,
+      t * nx * ny + s * nz,
+      t * ny * ny + c,
+      t * ny * nz - s * nx,
+      t * nx * nz - s * ny,
+      t * ny * nz + s * nx,
+      t * nz * nz + c,
+    ];
+  }
+
+  // オイラー角から回転行列を生成
+  static eulerToMatrix(
+    x: number,
+    y: number,
+    z: number,
+    order: string
+  ): [number, number, number, number, number, number, number, number, number] {
+    const cx = Math.cos(x),
+      sx = Math.sin(x);
+    const cy = Math.cos(y),
+      sy = Math.sin(y);
+    const cz = Math.cos(z),
+      sz = Math.sin(z);
+
+    let matrix: [number, number, number, number, number, number, number, number, number];
+
+    switch (order) {
+      case "XYZ":
+        matrix = [
+          cy * cz,
+          -cy * sz,
+          sy,
+          sx * sy * cz + cx * sz,
+          -sx * sy * sz + cx * cz,
+          -sx * cy,
+          -cx * sy * cz + sx * sz,
+          cx * sy * sz + sx * cz,
+          cx * cy,
+        ];
+        break;
+      case "ZYX":
+        matrix = [
+          cy * cz,
+          sx * sy * cz - cx * sz,
+          cx * sy * cz + sx * sz,
+          cy * sz,
+          sx * sy * sz + cx * cz,
+          cx * sy * sz - sx * cz,
+          -sy,
+          sx * cy,
+          cx * cy,
+        ];
+        break;
+      default: // XYZ as default
+        matrix = [
+          cy * cz,
+          -cy * sz,
+          sy,
+          sx * sy * cz + cx * sz,
+          -sx * sy * sz + cx * cz,
+          -sx * cy,
+          -cx * sy * cz + sx * sz,
+          cx * sy * sz + sx * cz,
+          cx * cy,
+        ];
+    }
+
+    return matrix;
+  }
+
+  // クォータニオンから回転行列を生成
+  static quaternionToMatrix(
+    x: number,
+    y: number,
+    z: number,
+    w: number
+  ): [number, number, number, number, number, number, number, number, number] {
+    // 正規化
+    const length = Math.sqrt(x * x + y * y + z * z + w * w);
+    if (length === 0) return [1, 0, 0, 0, 1, 0, 0, 0, 1];
+
+    const nx = x / length;
+    const ny = y / length;
+    const nz = z / length;
+    const nw = w / length;
+
+    const xx = nx * nx;
+    const yy = ny * ny;
+    const zz = nz * nz;
+    const xy = nx * ny;
+    const xz = nx * nz;
+    const yz = ny * nz;
+    const wx = nw * nx;
+    const wy = nw * ny;
+    const wz = nw * nz;
+
+    return [
+      1 - 2 * (yy + zz),
+      2 * (xy - wz),
+      2 * (xz + wy),
+      2 * (xy + wz),
+      1 - 2 * (xx + zz),
+      2 * (yz - wx),
+      2 * (xz - wy),
+      2 * (yz + wx),
+      1 - 2 * (xx + yy),
+    ];
+  }
+
+  // 2つの行列を乗算
+  static multiplyMatrices(
+    a: [number, number, number, number, number, number, number, number, number],
+    b: [number, number, number, number, number, number, number, number, number]
+  ): [number, number, number, number, number, number, number, number, number] {
+    return [
+      a[0] * b[0] + a[1] * b[3] + a[2] * b[6],
+      a[0] * b[1] + a[1] * b[4] + a[2] * b[7],
+      a[0] * b[2] + a[1] * b[5] + a[2] * b[8],
+      a[3] * b[0] + a[4] * b[3] + a[5] * b[6],
+      a[3] * b[1] + a[4] * b[4] + a[5] * b[7],
+      a[3] * b[2] + a[4] * b[5] + a[5] * b[8],
+      a[6] * b[0] + a[7] * b[3] + a[8] * b[6],
+      a[6] * b[1] + a[7] * b[4] + a[8] * b[7],
+      a[6] * b[2] + a[7] * b[5] + a[8] * b[8],
+    ];
+  }
+
+  // 行列を転置（RowMajor ↔ ColumnMajor変換）
+  static transposeMatrix(
+    matrix: [number, number, number, number, number, number, number, number, number]
+  ): [number, number, number, number, number, number, number, number, number] {
+    return [
+      matrix[0],
+      matrix[3],
+      matrix[6], // 1列目 → 1行目
+      matrix[1],
+      matrix[4],
+      matrix[7], // 2列目 → 2行目
+      matrix[2],
+      matrix[5],
+      matrix[8], // 3列目 → 3行目
+    ];
+  }
+
+  // DesmosのworldRotation3D形式からRowMajor形式に変換
+  static fromDesmosRotation(
+    desmosRotation: [number, number, number, number, number, number, number, number, number]
+  ): [number, number, number, number, number, number, number, number, number] {
+    // Desmos: [xAxis.x, xAxis.y, xAxis.z, yAxis.x, yAxis.y, yAxis.z, zAxis.x, zAxis.y, zAxis.z]
+    // これは列優先なので転置する
+    return RotationUtils.transposeMatrix(desmosRotation);
+  }
+
+  // RowMajor形式からDesmosのworldRotation3D形式に変換
+  static toDesmosRotation(
+    rowMajorMatrix: [number, number, number, number, number, number, number, number, number]
+  ): [number, number, number, number, number, number, number, number, number] {
+    // RowMajorを列優先に変換
+    return RotationUtils.transposeMatrix(rowMajorMatrix);
+  }
+}
+
 // 空のDesmosStateを返すユーティリティ
 export function getBlankDesmosState(): DesmosState {
   return {
@@ -22,6 +208,7 @@ export function getBlankDesmosState(): DesmosState {
 import type { Calculator, DesmosState } from "../types/desmos";
 import type { StateEvent, UnifiedEvent, VideoExportSettings } from "../types/timeline";
 import { deepCopy } from "./deepCopy";
+
 import { DEFAULT_VIDEO_SETTINGS } from "./videoSettingsDefaults";
 
 // デバッグモードのフラグ
@@ -589,6 +776,69 @@ export class StateManager {
         ...animation,
         bounds: boundsAnimation,
       };
+    } else if (animation.type === "rotation" && animation.rotation) {
+      // 回転アニメーションの補間処理（相対回転のみ）
+      const rotationAnimation = deepCopy(animation.rotation);
+
+      // 回転量を進行状況に応じて補間
+      let interpolatedMatrix: [
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number
+      ];
+
+      switch (rotationAnimation.mode) {
+        case "axis": {
+          const axis = rotationAnimation.axis;
+          if (axis) {
+            // 回転角度を進行状況で補間
+            const interpolatedAngle = axis.angle * easedProgress;
+            interpolatedMatrix = RotationUtils.axisAngleToMatrix(
+              axis.x,
+              axis.y,
+              axis.z,
+              interpolatedAngle
+            );
+          } else {
+            interpolatedMatrix = [1, 0, 0, 0, 1, 0, 0, 0, 1]; // 単位行列
+          }
+          break;
+        }
+        case "euler": {
+          const euler = rotationAnimation.euler;
+          if (euler) {
+            // 各軸の回転角度を進行状況で補間
+            const interpolatedX = euler.x * easedProgress;
+            const interpolatedY = euler.y * easedProgress;
+            const interpolatedZ = euler.z * easedProgress;
+            interpolatedMatrix = RotationUtils.eulerToMatrix(
+              interpolatedX,
+              interpolatedY,
+              interpolatedZ,
+              euler.order || "XYZ"
+            );
+          } else {
+            interpolatedMatrix = [1, 0, 0, 0, 1, 0, 0, 0, 1]; // 単位行列
+          }
+          break;
+        }
+        default:
+          interpolatedMatrix = [1, 0, 0, 0, 1, 0, 0, 0, 1]; // 単位行列
+      }
+
+      // 補間された回転を設定
+      rotationAnimation.interpolatedMatrix = interpolatedMatrix;
+
+      interpolatedEvent.animation = {
+        ...animation,
+        rotation: rotationAnimation,
+      };
     }
 
     return interpolatedEvent;
@@ -761,6 +1011,11 @@ export class StateManager {
       // バウンズアニメーションの場合
       else if (animation.type === "bounds" && animation.bounds) {
         return await this.applyBoundsAnimation(animation.bounds, previousState);
+      }
+
+      // 回転アニメーションの場合
+      else if (animation.type === "rotation" && animation.rotation) {
+        return await this.applyRotationAnimation(animation.rotation, previousState);
       }
     } catch (error) {
       debugLog(`Error applying animation:`, error);
@@ -1033,6 +1288,66 @@ export class StateManager {
       debugLog(`Error applying bounds animation:`, error);
     }
     return this.computeCalculator.getState();
+  }
+
+  // 回転アニメーションの適用
+  private async applyRotationAnimation(
+    rotationAnimation: NonNullable<UnifiedEvent["animation"]>["rotation"],
+    previousState: DesmosState
+  ): Promise<DesmosState> {
+    if (!this.computeCalculator || !rotationAnimation) return previousState;
+
+    // 現在の状態から既存の回転行列を取得（または初期値を使用）
+    const graphState = previousState.graph as DesmosState["graph"] & {
+      worldRotation3D?: [number, number, number, number, number, number, number, number, number];
+    };
+    try {
+      // 初期回転行列を設定（既存の値があればそれを使用、なければデフォルト値）
+      const defaultRotationMatrix: [
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number
+      ] = [
+        -0.5132799671593364, -0.8314696123025455, -0.212607523691814, 0.7681777567114166,
+        -0.555570233019602, 0.3181896451432085, -0.3826834323650897, 0, 0.9238795325112867,
+      ];
+
+      const currentDesmosRotation = graphState?.worldRotation3D || defaultRotationMatrix;
+
+      // 補間された回転行列を取得
+      if (rotationAnimation.interpolatedMatrix) {
+        // 補間された行列（RowMajor形式）
+        let finalRowMajorMatrix = rotationAnimation.interpolatedMatrix;
+
+        // 全ての回転は相対回転として処理
+        // Desmosの回転行列をRowMajor形式に変換
+        const currentRowMajorMatrix = RotationUtils.fromDesmosRotation(currentDesmosRotation);
+        // 行列を合成
+        finalRowMajorMatrix = RotationUtils.multiplyMatrices(
+          currentRowMajorMatrix,
+          rotationAnimation.interpolatedMatrix
+        );
+
+        // RowMajor形式をDesmosの形式に変換
+        const finalDesmosMatrix = RotationUtils.toDesmosRotation(finalRowMajorMatrix);
+
+        // worldRotation3Dに回転行列を設定
+        if (graphState) {
+          graphState.worldRotation3D = finalDesmosMatrix;
+          debugLog(`Applied rotation animation with matrix:`, finalDesmosMatrix);
+        }
+      }
+    } catch (error) {
+      debugLog(`Error applying rotation animation:`, error);
+    }
+
+    return { ...previousState, graph: graphState };
   }
 
   // StateをCalculatorに適用

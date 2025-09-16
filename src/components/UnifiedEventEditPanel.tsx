@@ -312,7 +312,12 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
           <select
             value={currentAnimation.type || "variable"}
             onChange={(e) => {
-              const newType = e.target.value as "variable" | "property" | "action" | "bounds";
+              const newType = e.target.value as
+                | "variable"
+                | "property"
+                | "action"
+                | "bounds"
+                | "rotation";
               const newAnimation = {
                 type: newType,
                 targetId: currentAnimation.targetId || "",
@@ -336,6 +341,12 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                     translation: { endX: 0, endY: 0, mode: "displacement" as const },
                   },
                 }),
+                ...(newType === "rotation" && {
+                  rotation: {
+                    mode: "axis" as const,
+                    axis: { x: 0, y: 0, z: 1, angle: Math.PI / 2 },
+                  },
+                }),
               };
               handleEventChange({ animation: newAnimation });
             }}
@@ -345,11 +356,12 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
             <option value="property">プロパティアニメーション</option>
             <option value="action">アクション実行</option>
             <option value="bounds">表示範囲アニメーション</option>
+            <option value="rotation">3D回転アニメーション</option>
           </select>
         </div>
 
-        {/* 対象Expression ID - boundsアニメーション以外で表示 */}
-        {currentAnimation.type !== "bounds" && (
+        {/* 対象Expression ID - boundsアニメーションと回転アニメーション以外で表示 */}
+        {currentAnimation.type !== "bounds" && currentAnimation.type !== "rotation" && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               対象Expression ID
@@ -1140,6 +1152,331 @@ export const UnifiedEventEditPanel: React.FC<UnifiedEventEditPanelProps> = ({
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* 回転アニメーション設定 */}
+        {currentAnimation.type === "rotation" && (
+          <div className="space-y-4 p-3 border border-purple-200 rounded-lg bg-purple-50">
+            <h5 className="text-sm font-medium text-purple-800">
+              3D回転アニメーション設定（相対回転）
+            </h5>
+            <div className="text-xs text-purple-600">
+              現在の回転状態から相対的にどれだけ回転するかを指定します
+            </div>
+
+            {/* 回転方式選択 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">回転方式</label>
+              <select
+                value={currentAnimation.rotation?.mode || "axis"}
+                onChange={(e) => {
+                  const mode = e.target.value as "axis" | "euler";
+                  const rotation = currentAnimation.rotation || {};
+                  const newRotation = {
+                    mode,
+                    ...(mode === "axis" && {
+                      axis: { x: 0, y: 0, z: 1, angle: Math.PI / 2 },
+                    }),
+                    ...(mode === "euler" && {
+                      euler: { x: 0, y: 0, z: 0, order: "XYZ" as const },
+                    }),
+                  };
+                  handleEventChange({
+                    animation: { ...currentAnimation, rotation: newRotation },
+                  });
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="axis">軸回転</option>
+                <option value="euler">オイラー角</option>
+              </select>
+            </div>
+
+            {/* 軸回転設定 */}
+            {currentAnimation.rotation?.mode === "axis" && (
+              <div className="space-y-3 p-3 border border-green-200 rounded bg-green-50">
+                <h6 className="text-sm font-medium text-green-800">軸回転設定</h6>
+                <div className="text-xs text-green-600">
+                  回転軸のベクトル（正規化される）と回転角度を指定
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">軸 X</label>
+                    <input
+                      type="number"
+                      value={currentAnimation.rotation.axis?.x ?? 0}
+                      onChange={(e) => {
+                        const rotation = currentAnimation.rotation || { mode: "axis" as const };
+                        const axis = rotation.axis || { x: 0, y: 0, z: 1, angle: 0 };
+                        handleEventChange({
+                          animation: {
+                            ...currentAnimation,
+                            rotation: {
+                              ...rotation,
+                              axis: { ...axis, x: parseFloat(e.target.value) },
+                            },
+                          },
+                        });
+                      }}
+                      step="0.1"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">軸 Y</label>
+                    <input
+                      type="number"
+                      value={currentAnimation.rotation.axis?.y ?? 0}
+                      onChange={(e) => {
+                        const rotation = currentAnimation.rotation || { mode: "axis" as const };
+                        const axis = rotation.axis || { x: 0, y: 0, z: 1, angle: 0 };
+                        handleEventChange({
+                          animation: {
+                            ...currentAnimation,
+                            rotation: {
+                              ...rotation,
+                              axis: { ...axis, y: parseFloat(e.target.value) },
+                            },
+                          },
+                        });
+                      }}
+                      step="0.1"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">軸 Z</label>
+                    <input
+                      type="number"
+                      value={currentAnimation.rotation.axis?.z ?? 1}
+                      onChange={(e) => {
+                        const rotation = currentAnimation.rotation || { mode: "axis" as const };
+                        const axis = rotation.axis || { x: 0, y: 0, z: 1, angle: 0 };
+                        handleEventChange({
+                          animation: {
+                            ...currentAnimation,
+                            rotation: {
+                              ...rotation,
+                              axis: { ...axis, z: parseFloat(e.target.value) },
+                            },
+                          },
+                        });
+                      }}
+                      step="0.1"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      角度(ラジアン)
+                    </label>
+                    <input
+                      type="number"
+                      value={currentAnimation.rotation.axis?.angle ?? 0}
+                      onChange={(e) => {
+                        const rotation = currentAnimation.rotation || { mode: "axis" as const };
+                        const axis = rotation.axis || { x: 0, y: 0, z: 1, angle: 0 };
+                        handleEventChange({
+                          animation: {
+                            ...currentAnimation,
+                            rotation: {
+                              ...rotation,
+                              axis: { ...axis, angle: parseFloat(e.target.value) },
+                            },
+                          },
+                        });
+                      }}
+                      step="0.01"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="text-xs text-gray-500">
+                  角度（度）:{" "}
+                  {(((currentAnimation.rotation.axis?.angle ?? 0) * 180) / Math.PI).toFixed(1)}°
+                </div>
+              </div>
+            )}
+
+            {/* オイラー角設定 */}
+            {currentAnimation.rotation?.mode === "euler" && (
+              <div className="space-y-3 p-3 border border-blue-200 rounded bg-blue-50">
+                <h6 className="text-sm font-medium text-blue-800">オイラー角設定</h6>
+                <div className="text-xs text-blue-600">各軸回りの回転角度を指定</div>
+
+                {/* 回転順序選択 */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">回転順序</label>
+                  <select
+                    value={currentAnimation.rotation.euler?.order || "XYZ"}
+                    onChange={(e) => {
+                      const rotation = currentAnimation.rotation || { mode: "euler" as const };
+                      const euler = rotation.euler || { x: 0, y: 0, z: 0, order: "XYZ" as const };
+                      handleEventChange({
+                        animation: {
+                          ...currentAnimation,
+                          rotation: {
+                            ...rotation,
+                            euler: {
+                              ...euler,
+                              order: e.target.value as
+                                | "XYZ"
+                                | "YXZ"
+                                | "ZXY"
+                                | "ZYX"
+                                | "YZX"
+                                | "XZY",
+                            },
+                          },
+                        },
+                      });
+                    }}
+                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="XYZ">XYZ</option>
+                    <option value="YXZ">YXZ</option>
+                    <option value="ZXY">ZXY</option>
+                    <option value="ZYX">ZYX</option>
+                    <option value="YZX">YZX</option>
+                    <option value="XZY">XZY</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      X軸回転(ラジアン)
+                    </label>
+                    <input
+                      type="number"
+                      value={currentAnimation.rotation.euler?.x ?? 0}
+                      onChange={(e) => {
+                        const rotation = currentAnimation.rotation || { mode: "euler" as const };
+                        const euler = rotation.euler || { x: 0, y: 0, z: 0, order: "XYZ" as const };
+                        handleEventChange({
+                          animation: {
+                            ...currentAnimation,
+                            rotation: {
+                              ...rotation,
+                              euler: { ...euler, x: parseFloat(e.target.value) },
+                            },
+                          },
+                        });
+                      }}
+                      step="0.01"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <div className="text-xs text-gray-500">
+                      {(((currentAnimation.rotation.euler?.x ?? 0) * 180) / Math.PI).toFixed(1)}°
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Y軸回転(ラジアン)
+                    </label>
+                    <input
+                      type="number"
+                      value={currentAnimation.rotation.euler?.y ?? 0}
+                      onChange={(e) => {
+                        const rotation = currentAnimation.rotation || { mode: "euler" as const };
+                        const euler = rotation.euler || { x: 0, y: 0, z: 0, order: "XYZ" as const };
+                        handleEventChange({
+                          animation: {
+                            ...currentAnimation,
+                            rotation: {
+                              ...rotation,
+                              euler: { ...euler, y: parseFloat(e.target.value) },
+                            },
+                          },
+                        });
+                      }}
+                      step="0.01"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <div className="text-xs text-gray-500">
+                      {(((currentAnimation.rotation.euler?.y ?? 0) * 180) / Math.PI).toFixed(1)}°
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Z軸回転(ラジアン)
+                    </label>
+                    <input
+                      type="number"
+                      value={currentAnimation.rotation.euler?.z ?? 0}
+                      onChange={(e) => {
+                        const rotation = currentAnimation.rotation || { mode: "euler" as const };
+                        const euler = rotation.euler || { x: 0, y: 0, z: 0, order: "XYZ" as const };
+                        handleEventChange({
+                          animation: {
+                            ...currentAnimation,
+                            rotation: {
+                              ...rotation,
+                              euler: { ...euler, z: parseFloat(e.target.value) },
+                            },
+                          },
+                        });
+                      }}
+                      step="0.01"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <div className="text-xs text-gray-500">
+                      {(((currentAnimation.rotation.euler?.z ?? 0) * 180) / Math.PI).toFixed(1)}°
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* プリセット回転ボタン */}
+            <div className="space-y-2">
+              <h6 className="text-sm font-medium text-gray-700">プリセット回転</h6>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={() => {
+                    const rotation = {
+                      mode: "axis" as const,
+                      axis: { x: 1, y: 0, z: 0, angle: Math.PI / 2 },
+                    };
+                    handleEventChange({
+                      animation: { ...currentAnimation, rotation },
+                    });
+                  }}
+                  className="px-3 py-2 text-sm bg-purple-100 hover:bg-purple-200 rounded border border-purple-300"
+                >
+                  X軸90°
+                </button>
+                <button
+                  onClick={() => {
+                    const rotation = {
+                      mode: "axis" as const,
+                      axis: { x: 0, y: 1, z: 0, angle: Math.PI / 2 },
+                    };
+                    handleEventChange({
+                      animation: { ...currentAnimation, rotation },
+                    });
+                  }}
+                  className="px-3 py-2 text-sm bg-purple-100 hover:bg-purple-200 rounded border border-purple-300"
+                >
+                  Y軸90°
+                </button>
+                <button
+                  onClick={() => {
+                    const rotation = {
+                      mode: "axis" as const,
+                      axis: { x: 0, y: 0, z: 1, angle: Math.PI / 2 },
+                    };
+                    handleEventChange({
+                      animation: { ...currentAnimation, rotation },
+                    });
+                  }}
+                  className="px-3 py-2 text-sm bg-purple-100 hover:bg-purple-200 rounded border border-purple-300"
+                >
+                  Z軸90°
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
